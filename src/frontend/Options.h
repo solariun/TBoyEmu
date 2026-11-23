@@ -13,8 +13,8 @@ struct Options {
           maxScale(1.0),
           kittyKeyboard(true),
           nativeKeyboard(true),
-          holdMs(150),
-          repeatHoldMs(120),
+          holdMs(0),
+          repeatHoldMs(0),
           headless(false),
           frames(600),
           help(false) {}
@@ -25,8 +25,8 @@ struct Options {
     double maxScale;
     bool kittyKeyboard;
     bool nativeKeyboard;  // read key state from the OS (macOS / Linux)
-    int holdMs;
-    int repeatHoldMs;
+    int holdMs;        // 0 = from the keyboard auto-repeat settings
+    int repeatHoldMs;  // 0 = from the keyboard auto-repeat settings
 
     // Headless mode (testing / benchmarking, no terminal UI).
     bool headless;

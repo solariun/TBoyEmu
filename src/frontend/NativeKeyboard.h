@@ -8,6 +8,17 @@
 
 namespace term {
 
+// Keyboard auto-repeat settings: a held key starts repeating after
+// delayMs, then repeats every intervalMs.
+struct KeyRepeatTiming {
+    int delayMs;
+    int intervalMs;
+};
+
+// Reads them from the OS (macOS IOHIDSystem, Linux X11); sensible defaults
+// otherwise.
+KeyRepeatTiming systemKeyRepeat();
+
 // Reads the *physical* keyboard state from the operating system, bypassing
 // the terminal.  Terminals without the kitty protocol never report key
 // releases and only auto-repeat the most recent key, so "hold X to
@@ -32,6 +43,8 @@ public:
     virtual std::string fixHint() const = 0;
     // Ask the OS for access (macOS shows its permission prompt).
     virtual void requestPermission() {}
+    // True when it is already known that the OS will refuse access.
+    virtual bool permissionMissing() const { return false; }
 };
 
 }  // namespace term

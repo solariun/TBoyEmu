@@ -1,5 +1,7 @@
 #include "GameInput.h"
 
+#include <cstdio>
+
 namespace term {
 
 using gb::Button;
@@ -11,12 +13,14 @@ const std::chrono::milliseconds kTapHold(60);       // keeps very short taps vis
 const std::chrono::milliseconds kIdleDisarm(1500);  // see update()
 }  // namespace
 
-GameInput::GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native, int holdMs,
-                     int repeatHoldMs)
+GameInput::GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native, KeyRepeatTiming repeat,
+                     int holdMs, int repeatHoldMs)
     : mode_(kittyKeyboard ? Mode::Kitty : (native ? Mode::Native : Mode::Timed)),
       native_(std::move(native)),
-      hold_(std::chrono::milliseconds(holdMs)),
-      repeatHold_(std::chrono::milliseconds(repeatHoldMs)),
+      fixedHoldMs_(holdMs),
+      fixedRepeatHoldMs_(repeatHoldMs),
+      repeatDelayMs_(repeat.delayMs),
+      repeatIntervalMs_(repeat.intervalMs),
       nativeVerified_(false),
       nativeMisses_(0),
       focused_(true),
@@ -25,6 +29,35 @@ GameInput::GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native,
       pauseToggle_(false),
       screenshot_(false) {
     releaseAll();
+    if (mode_ == Mode::Native && native_->permissionMissing()) {
+        // Ask right away instead of after a few failed key checks.
+        native_->requestPermission();
+        notice_ = std::string("Long presses / several keys need OS key access: ") + native_->fixHint();
+    }
+}
+
+GameInput::Clock::duration GameInput::initialHold() const {
+    // Until the first auto-repeat arrives we cannot tell a tap from a hold,
+    // so keep the button down for the whole repeat delay.
+    double ms = fixedHoldMs_ > 0 ? fixedHoldMs_ : repeatDelayMs_ + 80;
+    return std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::milli>(ms));
+}
+
+GameInput::Clock::duration GameInput::repeatHold() const {
+    // Tolerate one late/lost repeat before treating the key as released.
+    double ms = fixedRepeatHoldMs_ > 0 ? fixedRepeatHoldMs_ : 2 * repeatIntervalMs_ + 40;
+    return std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::milli>(ms));
+}
+
+void GameInput::learnRepeat(int i, Clock::time_point now) {
+    double gap = std::chrono::duration<double, std::milli>(now - lastPress_[i]).count();
+    if (repeatCount_[i] == 0) {
+        if (gap > repeatDelayMs_ * 0.5 && gap < repeatDelayMs_ * 2) repeatDelayMs_ = 0.8 * repeatDelayMs_ + 0.2 * gap;
+    } else {
+        if (gap > repeatIntervalMs_ * 0.5 && gap < repeatIntervalMs_ * 2) {
+            repeatIntervalMs_ = 0.8 * repeatIntervalMs_ + 0.2 * gap;
+        }
+    }
 }
 
 void GameInput::releaseAll() {
@@ -32,6 +65,8 @@ void GameInput::releaseAll() {
         pressed_[i] = false;
         timedDown_[i] = false;
         releaseAt_[i] = Clock::time_point();
+        repeatCount_[i] = 0;
+        lastPress_[i] = Clock::time_point();
     }
 }
 
@@ -40,7 +75,12 @@ std::string GameInput::description() const {
         case Mode::Kitty: return "exact (kitty)";
         case Mode::Native:
             return std::string(nativeVerified_ ? "exact (" : "probing (") + native_->name() + ")";
-        default: return "timed";
+        default: {
+            char buf[48];
+            std::snprintf(buf, sizeof(buf), "timed (repeat %d/%d ms)", static_cast<int>(repeatDelayMs_ + 0.5),
+                          static_cast<int>(repeatIntervalMs_ + 0.5));
+            return buf;
+        }
     }
 }
 
@@ -73,7 +113,14 @@ void GameInput::timedPress(int i, Clock::time_point now) {
             if (d != i) timedDown_[d] = false;
         }
     }
-    Clock::time_point until = now + (timedDown_[i] ? repeatHold_ : hold_);
+    if (timedDown_[i]) {
+        learnRepeat(i, now);  // an auto-repeat of a key that is still held
+        ++repeatCount_[i];
+    } else {
+        repeatCount_[i] = 0;
+    }
+    lastPress_[i] = now;
+    Clock::time_point until = now + (repeatCount_[i] == 0 ? initialHold() : repeatHold());
     if (!timedDown_[i] || until > releaseAt_[i]) releaseAt_[i] = until;
     timedDown_[i] = true;
 }
@@ -83,6 +130,7 @@ void GameInput::nativePress(int i, Clock::time_point now) {
         if (!nativeVerified_) {
             // From now on the OS state is authoritative: drop timed holds.
             nativeVerified_ = true;
+            notice_.clear();
             for (int b = 0; b < gb::kButtonCount; ++b) {
                 timedDown_[b] = false;
                 releaseAt_[b] = Clock::time_point();
@@ -104,7 +152,7 @@ void GameInput::nativePress(int i, Clock::time_point now) {
 void GameInput::fallBackToTimed() {
     mode_ = Mode::Timed;
     native_->requestPermission();
-    notice_ = std::string("Holding several keys needs OS key access: ") + native_->fixHint();
+    notice_ = std::string("Long presses / several keys need OS key access: ") + native_->fixHint();
 }
 
 void GameInput::handle(const KeyEvent& e, Clock::time_point now) {

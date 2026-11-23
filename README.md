@@ -50,8 +50,8 @@ and **240×80** for GBA games (one more row for the status bar). If the terminal
 In the ROM browser, type to search, use the arrows/PgUp/PgDn to move, and
 press Enter to play.
 
-**Holding several keys** (for example, X to accelerate while steering with
-the arrows): most terminals send only key *presses*, never releases, and
+**Holding keys** (a long press of X for a higher jump, or X to accelerate
+while steering with the arrows): most terminals send only key *presses*, never releases, and
 they auto-repeat only the last key you pressed. TBoyEmu picks the best key
 source it can find. The status bar shows which one is active.
 
@@ -61,16 +61,18 @@ source it can find. The status bar shows which one is active.
 | `exact (macOS)`       | macOS keyboard state (CoreGraphics) | Terminal.app, iTerm2, etc. May need permission (see below) |
 | `exact (evdev)`       | Linux `/dev/input/event*` | works on the console, X11 and Wayland. Needs read access: `sudo usermod -aG input $USER`, then log in again |
 | `exact (X11)`         | Linux X11 `XQueryKeymap` (libX11 loaded at runtime) | X11 sessions, no permission needed |
-| `timed`               | key presses only | a press holds the button for 150 ms, extended by auto-repeat. Holding two keys at once doesn't work here |
+| `timed (repeat 500/83 ms)` | key presses only | uses your keyboard's auto-repeat timing (read from the OS): a held key stays pressed, released about 2 repeat intervals after you let go. A quick tap counts as a press as long as the repeat delay. Only one key can be held at a time |
 
 The OS sources show `probing` until your first key press confirms they can
 see the keyboard. If they can't (no permission, or a Wayland terminal using
 the X11 source), TBoyEmu switches to `timed` and the status bar tells you
-how to fix it.
+how to fix it. For games where the length of a press matters (jump height
+in Mega Man, Mario, ...), use an `exact` source.
 
-- **macOS:** the system asks to allow your terminal app under
-  *System Settings → Privacy & Security → Input Monitoring*. Allow it, then
-  restart the terminal app.
+- **macOS:** when a game starts, macOS asks to allow your terminal app
+  under *System Settings → Privacy & Security → Input Monitoring*. Allow it,
+  then quit and reopen the terminal app. The status bar then shows
+  `keys: exact (macOS)`.
 - **Ignored keys:** OS key state is ignored while the terminal window isn't
   focused (it uses focus reporting), and also over SSH.
 - **Options:** `--no-native` and `--no-kitty` turn a source off.

@@ -84,7 +84,8 @@ void EmulatorSession::run(const std::string& romPath) {
     std::unique_ptr<NativeKeyboard> native;
     bool remote = std::getenv("SSH_CONNECTION") || std::getenv("SSH_TTY");
     if (!terminal_.kittyKeyboard() && options_.nativeKeyboard && !remote) native = NativeKeyboard::create();
-    GameInput input(terminal_.kittyKeyboard(), std::move(native), options_.holdMs, options_.repeatHoldMs);
+    GameInput input(terminal_.kittyKeyboard(), std::move(native), systemKeyRepeat(), options_.holdMs,
+                    options_.repeatHoldMs);
 
     const ColorMode colorMode = options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256;
     std::vector<KeyEvent> events;

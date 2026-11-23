@@ -65,8 +65,10 @@ std::string Options::usage(const char* program) {
            "  --scale N               maximum scale (1 = 160x72 cells, default 1)\n"
            "  --no-kitty              don't use the kitty keyboard protocol\n"
            "  --no-native             don't read the OS keyboard state (macOS/Linux)\n"
-           "  --hold-ms N             timed keys: hold time of a key press (150)\n"
-           "  --repeat-hold-ms N      timed keys: hold time per auto-repeat (120)\n"
+           "  --hold-ms N             timed keys: hold time of a key press\n"
+           "                          (default: the keyboard repeat delay + 80 ms)\n"
+           "  --repeat-hold-ms N      timed keys: hold time per auto-repeat\n"
+           "                          (default: twice the repeat interval + 40 ms)\n"
            "\n"
            "headless (testing):\n"
            "  --headless --frames N [--screenshot out.png|out.txt] [--input 60:start:5,120:a:5]\n";

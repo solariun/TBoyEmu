@@ -4,6 +4,7 @@
 
 #if defined(__APPLE__)
 #include <ApplicationServices/ApplicationServices.h>
+#include <IOKit/IOKitLib.h>
 #elif defined(__linux__)
 #include <dirent.h>
 #include <dlfcn.h>
@@ -51,9 +52,40 @@ public:
     void requestPermission() {
         if (!CGPreflightListenEventAccess()) CGRequestListenEventAccess();
     }
+    bool permissionMissing() const { return !CGPreflightListenEventAccess(); }
 };
 
+// Reads a nanosecond value from IOHIDSystem's "HIDParameters" dictionary.
+bool hidParameterMs(io_service_t service, CFStringRef key, int& ms) {
+    bool ok = false;
+    CFTypeRef params = IORegistryEntryCreateCFProperty(service, CFSTR("HIDParameters"), kCFAllocatorDefault, 0);
+    CFTypeRef value = 0;
+    if (params && CFGetTypeID(params) == CFDictionaryGetTypeID()) {
+        value = CFDictionaryGetValue(static_cast<CFDictionaryRef>(params), key);
+    }
+    long long ns = 0;
+    if (value && CFGetTypeID(value) == CFNumberGetTypeID() &&
+        CFNumberGetValue(static_cast<CFNumberRef>(value), kCFNumberLongLongType, &ns) && ns > 0) {
+        ms = static_cast<int>(ns / 1000000);
+        ok = true;
+    }
+    if (params) CFRelease(params);
+    return ok;
+}
+
 }  // namespace
+
+KeyRepeatTiming systemKeyRepeat() {
+    KeyRepeatTiming t = {500, 83};  // macOS defaults
+    io_service_t service = IOServiceGetMatchingService(0, IOServiceMatching("IOHIDSystem"));
+    if (service) {
+        int ms;
+        if (hidParameterMs(service, CFSTR("HIDInitialKeyRepeat"), ms)) t.delayMs = ms;
+        if (hidParameterMs(service, CFSTR("HIDKeyRepeat"), ms)) t.intervalMs = ms;
+        IOObjectRelease(service);
+    }
+    return t;
+}
 
 std::unique_ptr<NativeKeyboard> NativeKeyboard::create() {
     return std::unique_ptr<NativeKeyboard>(new MacKeyboard());
@@ -195,6 +227,31 @@ private:
 
 }  // namespace
 
+KeyRepeatTiming systemKeyRepeat() {
+    KeyRepeatTiming t = {500, 33};  // GNOME / KDE defaults
+    if (!std::getenv("DISPLAY")) return t;
+    void* lib = dlopen("libX11.so.6", RTLD_LAZY | RTLD_LOCAL);
+    if (!lib) return t;
+    typedef void* (*OpenFn)(const char*);
+    typedef int (*CloseFn)(void*);
+    typedef int (*RateFn)(void*, unsigned, unsigned*, unsigned*);
+    OpenFn openDisplay = loadSymbol<OpenFn>(lib, "XOpenDisplay");
+    CloseFn closeDisplay = loadSymbol<CloseFn>(lib, "XCloseDisplay");
+    RateFn getRate = loadSymbol<RateFn>(lib, "XkbGetAutoRepeatRate");
+    if (openDisplay && closeDisplay && getRate) {
+        if (void* display = openDisplay(0)) {
+            unsigned delay = 0, interval = 0;
+            if (getRate(display, 0x0100 /* XkbUseCoreKbd */, &delay, &interval) && delay && interval) {
+                t.delayMs = static_cast<int>(delay);
+                t.intervalMs = static_cast<int>(interval);
+            }
+            closeDisplay(display);
+        }
+    }
+    dlclose(lib);
+    return t;
+}
+
 std::unique_ptr<NativeKeyboard> NativeKeyboard::create() {
     std::unique_ptr<EvdevKeyboard> evdev(new EvdevKeyboard());
     if (evdev->open()) return std::unique_ptr<NativeKeyboard>(evdev.release());
@@ -207,6 +264,11 @@ std::unique_ptr<NativeKeyboard> NativeKeyboard::create() {
 // ========================================================= other systems ====
 
 std::unique_ptr<NativeKeyboard> NativeKeyboard::create() { return std::unique_ptr<NativeKeyboard>(); }
+
+KeyRepeatTiming systemKeyRepeat() {
+    KeyRepeatTiming t = {500, 33};
+    return t;
+}
 
 #endif
 

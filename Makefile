@@ -6,7 +6,7 @@ LDLIBS   += -lz
 # OS keyboard state backends (see src/frontend/NativeKeyboard.cpp)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-  LDLIBS += -framework ApplicationServices
+  LDLIBS += -framework ApplicationServices -framework IOKit -framework CoreFoundation
 endif
 ifeq ($(UNAME_S),Linux)
   LDLIBS += -ldl

@@ -30,7 +30,10 @@ public:
     typedef std::chrono::steady_clock Clock;
     enum class Mode { Kitty, Native, Timed };
 
-    GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native, int holdMs, int repeatHoldMs);
+    // holdMs / repeatHoldMs: fixed timed-mode hold times, or 0 to derive
+    // them from the keyboard's auto-repeat timing.
+    GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native, KeyRepeatTiming repeat, int holdMs,
+              int repeatHoldMs);
 
     void handle(const KeyEvent& event, Clock::time_point now);
     void update(Clock::time_point now);
@@ -49,13 +52,25 @@ public:
 private:
     static bool mapKey(const KeyEvent& event, gb::Button& button);
     void timedPress(int button, Clock::time_point now);
+    Clock::duration initialHold() const;
+    Clock::duration repeatHold() const;
+    void learnRepeat(int button, Clock::time_point now);
     void nativePress(int button, Clock::time_point now);
     void fallBackToTimed();
 
     Mode mode_;
     std::unique_ptr<NativeKeyboard> native_;
-    Clock::duration hold_;
-    Clock::duration repeatHold_;
+    // Timed mode.  A held key produces a first auto-repeat after
+    // repeatDelayMs_ and then one every repeatIntervalMs_; the button stays
+    // down across those gaps, so holding a key really holds the button
+    // (long press = higher jump).  Both values start from the OS settings
+    // and are refined from the repeats actually received.
+    int fixedHoldMs_;
+    int fixedRepeatHoldMs_;
+    double repeatDelayMs_;
+    double repeatIntervalMs_;
+    int repeatCount_[gb::kButtonCount];
+    Clock::time_point lastPress_[gb::kButtonCount];
 
     bool pressed_[gb::kButtonCount];         // what the game sees
     bool timedDown_[gb::kButtonCount];       // press-only bookkeeping

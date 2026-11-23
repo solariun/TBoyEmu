@@ -137,12 +137,11 @@ void Timers::write(u32 offset, u16 value) {
 
 // Maps gb::Button (core/Types.h order: Right, Left, Up, Down, A, B, Select, Start, L, R) to
 // its KEYINPUT bit and updates the active-low state.
-// Note for contributors: GBATEK lists bit 8 = R and bit 9 = L, while this table maps
-// Button::L to bit 8 and Button::R to bit 9, i.e. the two shoulder buttons appear swapped
-// relative to GBATEK. Verify against a game before changing it.
+// GBATEK "GBA Keypad Input": bit 8 = R, bit 9 = L, so Button::L (index 8) maps to bit 9 and
+// Button::R (index 9) to bit 8.
 void Keypad::setButton(gb::Button button, bool pressed) {
     // KEYINPUT bit order: A B Select Start Right Left Up Down R L
-    static const int bitFor[gb::kButtonCount] = {4, 5, 6, 7, 0, 1, 2, 3, 8, 9};
+    static const int bitFor[gb::kButtonCount] = {4, 5, 6, 7, 0, 1, 2, 3, 9, 8};
     u16 bit = static_cast<u16>(1u << bitFor[static_cast<int>(button)]);
     if (pressed) {
         state_ &= static_cast<u16>(~bit);

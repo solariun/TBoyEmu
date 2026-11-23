@@ -281,11 +281,11 @@ struct ScriptedPress {
 };
 
 // Button name (lower case) -> gb::Button. Returns false for unknown names.
-// Note: names[] lists only the 8 Game Boy buttons while the loop runs up to
-// gb::kButtonCount (10, including the GBA's L and R), so an unmatched name
-// reads past the end of the array; "l" and "r" are not accepted.
+// names[] follows the gb::Button order and must have gb::kButtonCount entries
+// ("l" and "r" are the GBA shoulder buttons).
 bool buttonFromName(const std::string& name, gb::Button& b) {
-    static const char* names[] = {"right", "left", "up", "down", "a", "b", "select", "start"};
+    static const char* names[gb::kButtonCount] = {"right", "left", "up", "down", "a",
+                                                  "b",     "select", "start", "l", "r"};
     for (int i = 0; i < gb::kButtonCount; ++i) {
         if (name == names[i]) {
             b = static_cast<gb::Button>(i);

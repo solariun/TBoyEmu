@@ -1,3 +1,40 @@
+// ============================================================================
+//  TBoyEmu - Game Boy / Game Boy Color / Game Boy Advance emulator for
+//  256-color terminals, written in C++11.
+//  https://github.com/solariun/TBoyEmu
+// ----------------------------------------------------------------------------
+//  File:   src/core/Cartridge.cpp
+//  Layer:  Game Boy core
+//
+//  What this file does
+//  -------------------
+//  Implements Cartridge and CartridgeHeader (see Cartridge.h): normalizes the
+//  ROM image size, parses the header, maps the cartridge type byte to an Mbc
+//  subclass (throwing for unsupported mappers), and reads/writes battery
+//  save files.
+//
+//  How it fits in
+//  --------------
+//  Constructed by MachineFactory; the resulting Cartridge is owned by
+//  GameBoy. createMbc() instantiates the mapper classes from Mbc.h.
+//
+//  Hardware notes
+//  --------------
+//  Cartridge type codes (Pan Docs, "The Cartridge Header", 0x0147):
+//    00 ROM, 08/09 ROM+RAM(+BATTERY), 01-03 MBC1, 05/06 MBC2,
+//    0B-0D MMM01, 0F/10 MBC3+TIMER, 11-13 MBC3, 19-1B MBC5,
+//    1C-1E MBC5+RUMBLE, 20 MBC6, 22 MBC7, FC POCKET CAMERA, FE HuC3, FF HuC1.
+//  RAM size codes (0x0149): 0 none, 1 unused (2 KiB here), 2 8 KiB,
+//    3 32 KiB (4 banks), 4 128 KiB (16 banks), 5 64 KiB (8 banks).
+//  MBC2 has 512 x 4 bits of RAM built into the chip regardless of 0x0149.
+//
+//  Contributing
+//  ------------
+//  To support a new mapper, add a class in Mbc.h/Mbc.cpp, a case in
+//  createMbc(), and keep hasBattery()/typeName() in sync. Save files are
+//  raw RAM followed by Mbc::saveExtra() bytes; keep that layout compatible
+//  with VBA/BGB so users can exchange saves.
+// ============================================================================
 #include "Cartridge.h"
 
 #include <algorithm>
@@ -10,6 +47,7 @@ namespace gb {
 
 namespace {
 
+// External RAM size in bytes for header byte 0x0149 (0 = no RAM).
 size_t ramSizeFromCode(u8 code) {
     switch (code) {
         case 0x01: return 2 * 1024;
@@ -21,27 +59,37 @@ size_t ramSizeFromCode(u8 code) {
     }
 }
 
+// Creates the mapper for header byte 0x0147. The Mbc keeps a reference to
+// rom, which must outlive it. Throws std::runtime_error for unsupported types
+// (MMM01, MBC6, MBC7, Pocket Camera, HuC3, unknown codes).
 std::unique_ptr<Mbc> createMbc(const CartridgeHeader& h, const std::vector<u8>& rom) {
     size_t ram = ramSizeFromCode(h.ramSizeCode);
     switch (h.type) {
+        // No mapper: ROM only, optionally with RAM (+ battery).
         case 0x00:
         case 0x08:
         case 0x09: return makeUnique<RomOnly>(rom, ram);
+        // MBC1, MBC1+RAM, MBC1+RAM+BATTERY.
         case 0x01:
         case 0x02:
         case 0x03:
         case 0xFF:  // HuC1 is close enough to MBC1 for ROM/RAM banking
             return makeUnique<Mbc1>(rom, ram);
+        // MBC2, MBC2+BATTERY (RAM is inside the chip).
         case 0x05:
         case 0x06: return makeUnique<Mbc2>(rom);
+        // MBC3+TIMER+BATTERY, MBC3+TIMER+RAM+BATTERY: with real time clock.
         case 0x0F:
         case 0x10: return makeUnique<Mbc3>(rom, ram, true);
+        // MBC3, MBC3+RAM, MBC3+RAM+BATTERY: no clock.
         case 0x11:
         case 0x12:
         case 0x13: return makeUnique<Mbc3>(rom, ram, false);
+        // MBC5, MBC5+RAM, MBC5+RAM+BATTERY.
         case 0x19:
         case 0x1A:
         case 0x1B: return makeUnique<Mbc5>(rom, ram, false);
+        // MBC5+RUMBLE variants (RAM bank bit 3 drives the motor).
         case 0x1C:
         case 0x1D:
         case 0x1E: return makeUnique<Mbc5>(rom, ram, true);
@@ -55,6 +103,9 @@ std::unique_ptr<Mbc> createMbc(const CartridgeHeader& h, const std::vector<u8>& 
 
 }  // namespace
 
+// Cartridge types whose Pan Docs name includes "BATTERY" (e.g. 0x03
+// MBC1+RAM+BATTERY, 0x0F MBC3+TIMER+BATTERY, 0xFF HuC1+RAM+BATTERY),
+// plus 0xFE (HuC3), which this code also treats as battery-backed.
 bool CartridgeHeader::hasBattery() const {
     switch (type) {
         case 0x03: case 0x06: case 0x09: case 0x0D: case 0x0F: case 0x10:
@@ -65,6 +116,8 @@ bool CartridgeHeader::hasBattery() const {
     }
 }
 
+// Display name of the mapper family (shown as "hardware" in the status bar
+// and in the "unsupported cartridge" error message).
 std::string CartridgeHeader::typeName() const {
     switch (type) {
         case 0x00: return "ROM";
@@ -86,27 +139,33 @@ std::string CartridgeHeader::typeName() const {
 }
 
 Cartridge::Cartridge(std::vector<u8> rom) : rom_(std::move(rom)) {
+    // An image must at least contain the header (up to 0x014F).
     if (rom_.size() < 0x8000) {
         // Pad tiny images so every bank access is in range.
         if (rom_.size() < 0x150) throw std::runtime_error("ROM image is too small");
         rom_.resize(0x8000, 0xFF);
     }
     // Round up to a whole number of 16 KiB banks.
+    // (Padding uses 0xFF, the value an open bus / erased ROM reads.)
     if (rom_.size() % 0x4000) rom_.resize((rom_.size() / 0x4000 + 1) * 0x4000, 0xFF);
 
     header_.cgbFlag = rom_[0x143];
     header_.type = rom_[0x147];
     header_.romSizeCode = rom_[0x148];
     header_.ramSizeCode = rom_[0x149];
+    // On CGB carts byte 0x0143 is the CGB flag, so the title is 15 bytes.
     size_t titleLen = header_.supportsCgb() ? 15 : 16;
     for (size_t i = 0; i < titleLen; ++i) {
         char c = static_cast<char>(rom_[0x134 + i]);
         if (c == 0) break;
         header_.title.push_back((c >= 32 && c < 127) ? c : '?');
     }
+    // rom_ is final from here on: the Mbc keeps a reference to it.
     mbc_ = createMbc(header_, rom_);
 }
 
+// Copies as much of the file as fits into cartridge RAM; any bytes beyond
+// the RAM size are handed to the mapper (MBC3 RTC trailer).
 bool Cartridge::loadSave(const std::string& path) {
     if (!header_.hasBattery()) return false;
     std::ifstream in(path.c_str(), std::ios::binary);
@@ -119,6 +178,8 @@ bool Cartridge::loadSave(const std::string& path) {
     return true;
 }
 
+// Writes cartridge RAM followed by the mapper's extra state. A battery cart
+// with no RAM and no extra state writes nothing and returns false.
 bool Cartridge::writeSave(const std::string& path) const {
     if (!header_.hasBattery()) return false;
     std::vector<u8> data(mbc_->ram());

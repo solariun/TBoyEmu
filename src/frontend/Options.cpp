@@ -1,3 +1,33 @@
+// ============================================================================
+//  TBoyEmu - Game Boy / Game Boy Color / Game Boy Advance emulator for
+//  256-color terminals, written in C++11.
+//  https://github.com/solariun/TBoyEmu
+// ----------------------------------------------------------------------------
+//  File:   src/frontend/Options.cpp
+//  Layer:  Terminal frontend
+//
+//  What this file does
+//  -------------------
+//  Implements Options::parse() (a simple hand-written argv loop, no getopt)
+//  and Options::usage() (the --help text). See Options.h for the meaning of
+//  every field.
+//
+//  How it fits in
+//  --------------
+//  Called from main() before anything touches the terminal, so errors are
+//  printed on a normal (cooked-mode) terminal.
+//
+//  Terminal concepts
+//  -----------------
+//  None directly; the options only switch terminal features on or off (see
+//  the table in Options.h).
+//
+//  Contributing
+//  ------------
+//  * Keep usage() in sync with parse() and with README.md.
+//  * Numbers are parsed with atoi/atof, so garbage becomes 0; the range
+//    checks after each value catch the cases that matter.
+// ============================================================================
 #include "Options.h"
 
 #include <cstdlib>
@@ -7,6 +37,7 @@ namespace term {
 std::string Options::parse(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
+        // True when another argument follows (for options that take a value).
         bool hasValue = i + 1 < argc;
         if (a == "-h" || a == "--help") {
             help = true;
@@ -22,6 +53,7 @@ std::string Options::parse(int argc, char** argv) {
             maxScale = std::atof(argv[++i]);
             if (maxScale <= 0) return "--scale must be positive";
         } else if (a == "--hold-ms" && hasValue) {
+            // Minimum 16 ms, about one emulated frame (16.74 ms).
             holdMs = std::atoi(argv[++i]);
             if (holdMs < 16) return "--hold-ms must be >= 16";
         } else if (a == "--repeat-hold-ms" && hasValue) {
@@ -38,6 +70,7 @@ std::string Options::parse(int argc, char** argv) {
         } else if (!a.empty() && a[0] == '-') {
             return "unknown option: " + a;
         } else if (path.empty()) {
+            // First non-option argument: the ROM file or a ROM directory.
             path = a;
         } else {
             return "only one ROM path may be given";

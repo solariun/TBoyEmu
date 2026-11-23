@@ -1,13 +1,57 @@
+// ============================================================================
+//  TBoyEmu - Game Boy / Game Boy Color / Game Boy Advance emulator for
+//  256-color terminals, written in C++11.
+//  https://github.com/solariun/TBoyEmu
+// ----------------------------------------------------------------------------
+//  File:   src/core/Cpu.cpp
+//  Layer:  Game Boy core
+//
+//  What this file does
+//  -------------------
+//  Implements the SM83 CPU declared in Cpu.h: post-boot register state,
+//  operand decoding helpers, the main step() loop with interrupt dispatch,
+//  HALT/STOP, the ALU (8-bit arithmetic/logic, rotates and shifts, DAA,
+//  16-bit adds) and the opcode dispatcher for the base and 0xCB tables.
+//
+//  How it fits in
+//  --------------
+//  GameBoy::runFrame() calls Cpu::step() repeatedly. Every bus cycle calls
+//  Bus::tick() (through read8/write8/idle in Cpu.h), which advances the
+//  timer, serial port, PPU and DMA engines by one M-cycle.
+//
+//  Hardware notes
+//  --------------
+//  Pan Docs, "CPU Instruction Set", "Interrupts", "halt", "Power Up
+//  Sequence"; opcode table at https://gbdev.io/gb-opcodes/optables/.
+//  Opcode bit fields used by the decoder (opcode = xx yyy zzz):
+//    zzz (bits 0-2) source register, yyy (bits 3-5) destination register,
+//    ALU operation or bit number, bits 4-5 register pair, bits 3-4 condition.
+//  Interrupt dispatch takes 5 M-cycles and jumps to 0x40/0x48/0x50/0x58/0x60
+//  (V-Blank, STAT, Timer, Serial, Joypad); lower bits have higher priority.
+//  EI enables interrupts only after the instruction that follows it.
+//  HALT bug: HALT executed with IME = 0 and an interrupt already pending
+//  does not halt, and the next byte is read twice (PC fails to increment).
+//
+//  Contributing
+//  ------------
+//  The M-cycle count of each instruction is the number of fetch8/read8/
+//  write8/idle calls it makes; check it against the opcode table when
+//  editing. Test with:
+//      make && ./tboyemu --headless --frames 3600 cpu_instrs.gb
+//  (must print "Passed all tests") and Blargg instr_timing.
+// ============================================================================
 #include "Cpu.h"
 
 namespace gb {
 
 namespace {
+// Flag bits in register F.
 const u8 FZ = 0x80;  // zero
 const u8 FN = 0x40;  // subtract
 const u8 FH = 0x20;  // half carry
 const u8 FC = 0x10;  // carry
 
+// Handler address for each IF/IE bit (V-Blank, STAT, Timer, Serial, Joypad).
 const u16 kInterruptVectors[5] = {0x40, 0x48, 0x50, 0x58, 0x60};
 }  // namespace
 
@@ -15,6 +59,8 @@ Cpu::Cpu(Bus& bus, InterruptController& ic) : bus_(bus), ic_(ic) { reset(true); 
 
 void Cpu::reset(bool cgbMode) {
     // Register state left by the boot ROM (the boot ROM itself is skipped).
+    // Values from Pan Docs, "Power Up Sequence" (CPU registers). A = 0x11
+    // is how CGB games detect that they run on a Game Boy Color.
     if (cgbMode) {
         r_.a = 0x11; r_.f = 0x80;
         r_.b = 0x00; r_.c = 0x00;
@@ -36,6 +82,7 @@ void Cpu::reset(bool cgbMode) {
 
 // ------------------------------------------------------------ helpers ----
 
+// 1 M-cycle. Normally PC++, except right after the HALT bug.
 u8 Cpu::fetch8() {
     u8 v = read8(r_.pc);
     if (haltBug_) {
@@ -46,12 +93,14 @@ u8 Cpu::fetch8() {
     return v;
 }
 
+// 2 M-cycles; little-endian (low byte first).
 u16 Cpu::fetch16() {
     u8 lo = fetch8();
     u8 hi = fetch8();
     return static_cast<u16>(lo | (hi << 8));
 }
 
+// 3 M-cycles: one internal (SP decrement) then high byte, then low byte.
 void Cpu::push16(u16 value) {
     idle();
     r_.sp = static_cast<u16>(r_.sp - 1);
@@ -60,6 +109,7 @@ void Cpu::push16(u16 value) {
     write8(r_.sp, static_cast<u8>(value));
 }
 
+// 2 M-cycles: low byte then high byte.
 u16 Cpu::pop16() {
     u8 lo = read8(r_.sp);
     r_.sp = static_cast<u16>(r_.sp + 1);
@@ -86,6 +136,7 @@ void Cpu::setPair(int index, u16 v) {
     }
 }
 
+// Index 6 is the memory operand (HL): it costs one M-cycle for the read.
 u8 Cpu::getReg(int index) {
     switch (index) {
         case 0: return r_.b;
@@ -99,6 +150,7 @@ u8 Cpu::getReg(int index) {
     }
 }
 
+// Index 6 writes memory at HL (one M-cycle).
 void Cpu::setReg(int index, u8 value) {
     switch (index) {
         case 0: r_.b = value; break;
@@ -124,6 +176,7 @@ bool Cpu::condition(int cc) const {
 // --------------------------------------------------------------- step ----
 
 void Cpu::serviceInterrupt(u8 pending) {
+    // Lowest set bit = highest priority interrupt.
     int bit = 0;
     while (!(pending & (1 << bit))) ++bit;
     ime_ = false;
@@ -133,6 +186,7 @@ void Cpu::serviceInterrupt(u8 pending) {
         haltBug_ = false;
         r_.pc = static_cast<u16>(r_.pc - 1);
     }
+    // 5 M-cycles in total: 2 internal, 2 stack writes, 1 to set PC.
     idle();
     push16(r_.pc);  // includes one internal cycle
     ic_.acknowledge(static_cast<u8>(1 << bit));
@@ -144,6 +198,8 @@ void Cpu::step() {
     // CPU frozen by a VRAM DMA transfer.
     for (int stall = bus_.takeStallCycles(); stall > 0; --stall) idle();
 
+    // HALT: burn one M-cycle at a time until an interrupt is pending
+    // (IF & IE != 0). Leaving HALT does not require IME.
     u8 pending = ic_.pending();
     if (halted_) {
         if (!pending) {
@@ -153,6 +209,7 @@ void Cpu::step() {
         halted_ = false;
     }
 
+    // Interrupts are checked between instructions.
     if (ime_ && pending) {
         serviceInterrupt(pending);
         return;
@@ -160,6 +217,8 @@ void Cpu::step() {
 
     execute(fetch8());
 
+    // EI sets eiDelay_ = 2: it drops to 1 after EI itself and reaches 0
+    // (enabling IME) after the next instruction.
     if (eiDelay_ > 0 && --eiDelay_ == 0) ime_ = true;
 }
 
@@ -171,6 +230,8 @@ void Cpu::halt() {
     }
 }
 
+// STOP: on CGB with KEY1 armed it performs the speed switch; otherwise the
+// CPU waits like HALT (this emulator does not stop the LCD in STOP mode).
 void Cpu::stop() {
     fetch8();  // STOP is two bytes long
     if (bus_.speedSwitchArmed()) {
@@ -182,6 +243,9 @@ void Cpu::stop() {
 
 // ---------------------------------------------------------------- ALU ----
 
+// Flags: Z if the 8-bit result is 0; N for SUB/SBC/CP; H on a carry out of
+// (or borrow into) bit 3; C on a carry out of (or borrow into) bit 7.
+// AND always sets H; XOR/OR clear H and C.
 void Cpu::alu(int operation, u8 v) {
     const u8 a = r_.a;
     const int carry = flag(FC) ? 1 : 0;
@@ -200,6 +264,7 @@ void Cpu::alu(int operation, u8 v) {
             if (result > 0xFF) f |= FC;
             r_.a = static_cast<u8>(result);
             break;
+        // CP is a SUB that only updates the flags.
         case 2:  // SUB
         case 7:  // CP
             result = a - v;
@@ -233,6 +298,8 @@ void Cpu::alu(int operation, u8 v) {
     r_.f = f;
 }
 
+// CB-prefixed rotate/shift group (also used by RLCA/RRCA/RLA/RRA, which
+// then clear Z). carryOut is the bit shifted out; RL/RR rotate through C.
 u8 Cpu::rotateShift(int operation, u8 v) {
     u8 result;
     bool carryOut;
@@ -258,6 +325,7 @@ u8 Cpu::rotateShift(int operation, u8 v) {
             carryOut = (v & 0x80) != 0;
             result = static_cast<u8>(v << 1);
             break;
+        // SRA keeps bit 7 (arithmetic shift); SRL shifts in 0.
         case 5:  // SRA
             carryOut = (v & 0x01) != 0;
             result = static_cast<u8>((v >> 1) | (v & 0x80));
@@ -275,18 +343,21 @@ u8 Cpu::rotateShift(int operation, u8 v) {
     return result;
 }
 
+// H is set when the low nibble overflows (0xF -> 0x0).
 u8 Cpu::inc8(u8 v) {
     u8 r = static_cast<u8>(v + 1);
     r_.f = static_cast<u8>((r_.f & FC) | (r == 0 ? FZ : 0) | ((v & 0xF) == 0xF ? FH : 0));
     return r;
 }
 
+// H is set when the low nibble borrows (0x0 -> 0xF).
 u8 Cpu::dec8(u8 v) {
     u8 r = static_cast<u8>(v - 1);
     r_.f = static_cast<u8>((r_.f & FC) | FN | (r == 0 ? FZ : 0) | ((v & 0xF) == 0 ? FH : 0));
     return r;
 }
 
+// N cleared, Z kept, one extra internal M-cycle.
 void Cpu::addHl(u16 v) {
     u16 h = hl();
     int result = h + v;
@@ -299,6 +370,8 @@ void Cpu::addHl(u16 v) {
 }
 
 // SP + signed immediate; shared by ADD SP,e and LD HL,SP+e.
+// The flags are computed on the unsigned low byte of SP plus the raw byte,
+// as the hardware does, even for negative offsets.
 u16 Cpu::addSpSigned() {
     u8 raw = fetch8();
     int offset = static_cast<s8>(raw);
@@ -310,6 +383,10 @@ u16 Cpu::addSpSigned() {
     return static_cast<u16>(sp + offset);
 }
 
+// DAA: after an addition (N = 0) add 0x60 if there was a carry or A > 0x99
+// and 0x06 if there was a half carry or the low digit > 9; after a
+// subtraction (N = 1) subtract according to C and H only. H is cleared,
+// N kept, C set if a 0x60 correction was needed by an addition.
 void Cpu::daa() {
     u8 a = r_.a;
     bool carry = flag(FC);
@@ -327,6 +404,8 @@ void Cpu::daa() {
     r_.f = static_cast<u8>((r_.f & FN) | (a == 0 ? FZ : 0) | (carry ? FC : 0));
 }
 
+// 2 M-cycles if not taken, 3 if taken. The offset is relative to the
+// address after the instruction.
 void Cpu::jumpRelative(bool taken) {
     s8 offset = static_cast<s8>(fetch8());
     if (taken) {
@@ -337,12 +416,16 @@ void Cpu::jumpRelative(bool taken) {
 
 // ------------------------------------------------------------ opcodes ----
 
+// CB table: bits 6-7 select the group, bits 3-5 (y) the operation or bit
+// number, bits 0-2 the operand. (HL) operands read and (except BIT) write
+// memory, which adds the matching M-cycles automatically.
 void Cpu::executeCb() {
     u8 op = fetch8();
     int reg = op & 7;
     int y = (op >> 3) & 7;
     u8 v = getReg(reg);
     switch (op >> 6) {
+        // 0x00-0x3F: RLC RRC RL RR SLA SRA SWAP SRL.
         case 0:
             setReg(reg, rotateShift(y, v));
             break;
@@ -360,6 +443,8 @@ void Cpu::executeCb() {
 
 void Cpu::execute(u8 op) {
     // Regular blocks first: LD r,r' and ALU A,r.
+    // 0x40-0x7F: LD dst,src with dst = bits 3-5, src = bits 0-2;
+    // 0x76 (which would be LD (HL),(HL)) is HALT.
     if (op >= 0x40 && op < 0x80) {
         if (op == 0x76) {
             halt();
@@ -368,11 +453,13 @@ void Cpu::execute(u8 op) {
         }
         return;
     }
+    // 0x80-0xBF: ALU operation (bits 3-5) with register operand (bits 0-2).
     if (op >= 0x80 && op < 0xC0) {
         alu((op >> 3) & 7, getReg(op & 7));
         return;
     }
 
+    // Everything else: 0x00-0x3F and 0xC0-0xFF.
     switch (op) {
         case 0x00: break;  // NOP
 
@@ -382,6 +469,7 @@ void Cpu::execute(u8 op) {
             break;
 
         // LD (rr),A / LD A,(rr)
+        // 0x22/0x2A are LD (HL+) (post-increment), 0x32/0x3A LD (HL-).
         case 0x02: write8(bc(), r_.a); break;
         case 0x12: write8(de(), r_.a); break;
         case 0x22: write8(hl(), r_.a); setHl(static_cast<u16>(hl() + 1)); break;
@@ -392,6 +480,7 @@ void Cpu::execute(u8 op) {
         case 0x3A: r_.a = read8(hl()); setHl(static_cast<u16>(hl() - 1)); break;
 
         // INC rr / DEC rr
+        // No flags affected; 2 M-cycles (one internal).
         case 0x03: case 0x13: case 0x23: case 0x33:
             setPair(op >> 4, static_cast<u16>(pair(op >> 4) + 1));
             idle();
@@ -402,6 +491,7 @@ void Cpu::execute(u8 op) {
             break;
 
         // INC r / DEC r / LD r,d8
+        // Register in bits 3-5; index 6 is (HL) (read-modify-write).
         case 0x04: case 0x0C: case 0x14: case 0x1C: case 0x24: case 0x2C: case 0x34: case 0x3C: {
             int reg = (op >> 3) & 7;
             setReg(reg, inc8(getReg(reg)));
@@ -417,6 +507,7 @@ void Cpu::execute(u8 op) {
             break;
 
         // Accumulator rotates (Z always cleared)
+        // RLCA, RRCA, RLA, RRA: same as the CB versions but only C survives.
         case 0x07: r_.a = rotateShift(0, r_.a); r_.f &= FC; break;
         case 0x0F: r_.a = rotateShift(1, r_.a); r_.f &= FC; break;
         case 0x17: r_.a = rotateShift(2, r_.a); r_.f &= FC; break;
@@ -429,6 +520,7 @@ void Cpu::execute(u8 op) {
             break;
         }
 
+        // ADD HL,rr
         case 0x09: case 0x19: case 0x29: case 0x39:
             addHl(pair(op >> 4));
             break;
@@ -436,18 +528,22 @@ void Cpu::execute(u8 op) {
         case 0x10: stop(); break;
 
         // Relative jumps
+        // JR e, JR NZ/Z/NC/C,e.
         case 0x18: jumpRelative(true); break;
         case 0x20: jumpRelative(condition(0)); break;
         case 0x28: jumpRelative(condition(1)); break;
         case 0x30: jumpRelative(condition(2)); break;
         case 0x38: jumpRelative(condition(3)); break;
 
+        // Misc accumulator / flag instructions.
         case 0x27: daa(); break;
         case 0x2F: r_.a = static_cast<u8>(~r_.a); r_.f |= FN | FH; break;  // CPL
         case 0x37: r_.f = static_cast<u8>((r_.f & FZ) | FC); break;         // SCF
         case 0x3F: r_.f = static_cast<u8>((r_.f & FZ) | ((r_.f & FC) ^ FC)); break;  // CCF
 
         // RET cc / RET / RETI
+        // RET cc: 2 M-cycles if not taken, 5 if taken. RET: 4. RETI also
+        // sets IME immediately (no EI-style delay).
         case 0xC0: case 0xC8: case 0xD0: case 0xD8:
             idle();
             if (condition((op >> 3) & 3)) {
@@ -459,6 +555,7 @@ void Cpu::execute(u8 op) {
         case 0xD9: r_.pc = pop16(); idle(); ime_ = true; break;
 
         // POP / PUSH
+        // POP AF clears the low 4 bits of F (setAf).
         case 0xC1: setBc(pop16()); break;
         case 0xD1: setDe(pop16()); break;
         case 0xE1: setHl(pop16()); break;
@@ -469,6 +566,8 @@ void Cpu::execute(u8 op) {
         case 0xF5: push16(af()); break;
 
         // Absolute jumps
+        // JP cc,a16: 3 M-cycles if not taken, 4 if taken. JP a16: 4.
+        // JP HL: 1 (no extra cycle).
         case 0xC2: case 0xCA: case 0xD2: case 0xDA: {
             u16 addr = fetch16();
             if (condition((op >> 3) & 3)) {
@@ -481,6 +580,8 @@ void Cpu::execute(u8 op) {
         case 0xE9: r_.pc = hl(); break;
 
         // Calls
+        // CALL cc,a16: 3 M-cycles if not taken, 6 if taken. CALL a16: 6.
+        // RST n (0xC7 + 8n): push PC and jump to n * 8, 4 M-cycles.
         case 0xC4: case 0xCC: case 0xD4: case 0xDC: {
             u16 addr = fetch16();
             if (condition((op >> 3) & 3)) {
@@ -501,6 +602,7 @@ void Cpu::execute(u8 op) {
             break;
 
         // ALU A,d8
+        // ADD ADC SUB SBC AND XOR OR CP with an immediate operand.
         case 0xC6: case 0xCE: case 0xD6: case 0xDE: case 0xE6: case 0xEE: case 0xF6: case 0xFE:
             alu((op >> 3) & 7, fetch8());
             break;
@@ -508,6 +610,8 @@ void Cpu::execute(u8 op) {
         case 0xCB: executeCb(); break;
 
         // High page loads
+        // LDH (a8),A / LDH A,(a8) / LD (C),A / LD A,(C) address 0xFF00 + n,
+        // and LD (a16),A / LD A,(a16).
         case 0xE0: write8(static_cast<u16>(0xFF00 | fetch8()), r_.a); break;
         case 0xF0: r_.a = read8(static_cast<u16>(0xFF00 | fetch8())); break;
         case 0xE2: write8(static_cast<u16>(0xFF00 | r_.c), r_.a); break;
@@ -516,10 +620,13 @@ void Cpu::execute(u8 op) {
         case 0xFA: r_.a = read8(fetch16()); break;
 
         // Stack pointer arithmetic
+        // ADD SP,e: 4 M-cycles. LD HL,SP+e: 3. LD SP,HL: 2.
         case 0xE8: r_.sp = addSpSigned(); idle(); idle(); break;
         case 0xF8: setHl(addSpSigned()); idle(); break;
         case 0xF9: r_.sp = hl(); idle(); break;
 
+        // DI takes effect at once and cancels a pending EI. EI arms the
+        // one-instruction delay (see Cpu::step()).
         case 0xF3: ime_ = false; eiDelay_ = 0; break;    // DI
         case 0xFB: if (!ime_ && eiDelay_ == 0) eiDelay_ = 2; break;  // EI
 

@@ -1,0 +1,16 @@
+# Build output
+/build/
+/tboyemu
+
+# ROMs and battery saves (not distributable)
+/Nintendo - Game Boy Color/
+*.gb
+*.gbc
+*.sgb
+*.zip
+*.sav
+
+# Screen captures (S key)
+*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]*.txt
+
+.DS_Store

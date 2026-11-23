@@ -16,6 +16,13 @@ GameBoy::GameBoy(std::unique_ptr<Cartridge> cartridge)
     reset();
 }
 
+System GameBoy::system() const {
+    u8 flag = cartridge_->header().cgbFlag;
+    if (flag == 0xC0) return System::GameBoyColor;
+    if (flag & 0x80) return System::GameBoyDual;
+    return System::GameBoy;
+}
+
 void GameBoy::reset() {
     interrupts_.writeIF(0x01);
     interrupts_.writeIE(0x00);

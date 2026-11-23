@@ -1,34 +1,48 @@
 # TBoyEmu
 
-A Game Boy / Game Boy Color emulator written in C++11 that runs in a
-256-color terminal at full speed (59.73 fps). There's no audio; it handles
-video and keyboard input only.
+A Game Boy, Game Boy Color and Game Boy Advance emulator written in C++11
+that runs in a 256-color terminal at full speed (59.73 fps). There's no
+audio; it handles video and keyboard input only.
 
 ## Build & run
 
 ```bash
 make
-./tboyemu                     # ROM browser for "Nintendo - Game Boy Color/"
-./tboyemu "Nintendo - Game Boy Color/Tetris DX (World) (SGB Enhanced) (GB Compatible).zip"
+./tboyemu                     # list every game under roms/
+./tboyemu "roms/Nintendo - Game Boy Advance/Metroid Fusion (USA).zip"
 ```
 
+**Games** go in `roms/`, in any subfolders you like. The start screen scans
+all of them and tags each game with its system, read from the ROM header:
+
+| Tag      | Meaning |
+|----------|---------|
+| `GB`     | original Game Boy |
+| `GB/GBC` | Game Boy game with Game Boy Color enhancements |
+| `GBC`    | Game Boy Color only |
+| `GBA`    | Game Boy Advance |
+
+Type in the search box to filter by name, or by tag (`gba`, `gbc`, ...).
+
 Requirements: a C++11 compiler and zlib (the zlib development package on Linux, e.g. `zlib1g-dev`). It builds on macOS and Linux with the same `make`. Linux needs no X11 headers, because libX11 is loaded at runtime only if it's there.
-ROMs can be `.gb`, `.gbc` or `.zip` files.
+ROMs can be `.gb`, `.gbc`, `.gba` or `.zip` files.
 
 **Terminal size:** each cell shows 2 pixels (`▀` with foreground and
-background colors), so full size needs **160×72** cells (73 with the status
-bar). If the terminal is smaller, the picture is scaled down. Pass
+background colors), so full size needs **160×72** cells for Game Boy games
+and **240×80** for GBA games (one more row for the status bar). If the terminal is smaller, the picture is scaled down. Pass
 `--scale 2` to let it grow on very large terminals.
 
 ## Controls
 
-| Key            | Game Boy |
+| Key            | Button   |
 |----------------|----------|
 | Arrows         | D-pad    |
 | X              | A        |
 | Z              | B        |
 | C              | Select   |
 | Space / Enter  | Start    |
+| A              | L (GBA)  |
+| D              | R (GBA)  |
 | P              | Pause    |
 | S              | Save the screen as text (see below) |
 | Esc            | Back to the ROM list (Esc again to quit) |
@@ -64,21 +78,27 @@ how to fix it.
 
 **Screen capture (S):** saves the current frame to
 `<rom name>-YYYYMMDD-HHMMSS.txt` in the current directory. The file holds
-the escaped terminal content: 72 lines of 160 `▀` cells with ANSI color
-codes (xterm-256, or 24-bit with `--truecolor`). It's always full size,
+the escaped terminal content: 72 lines of 160 `▀` cells (80 lines of 240 for
+GBA games) with ANSI color codes (xterm-256, or 24-bit with `--truecolor`). It's always full size,
 whatever the size of your terminal window. View it again with:
 
 ```bash
 cat "Tetris DX (World) (SGB Enhanced) (GB Compatible)-20261123-194313.txt"
 ```
 
-Battery saves go next to the ROM as `<rom>.sav`, in the VBA/BGB format
-with the RTC trailer. They're written on exit and every 30 s.
+Battery saves go next to the ROM as `<rom>.sav`. They're written on exit and
+every 30 s. Game Boy saves use the VBA/BGB format with the RTC trailer. GBA
+saves are raw SRAM, Flash or EEPROM dumps, the same format other emulators
+use.
 
 ## Architecture
 
-Each piece of hardware is a class in `src/core`. `GameBoy` owns all of them
-and wires them together by reference:
+Both consoles implement one interface, `gb::Machine` (run a frame, set
+buttons, get the frame, save). `MachineFactory` reads the ROM header and
+creates the right one. Each piece of hardware is its own class, owned by
+the console class and wired to the others by reference.
+
+Game Boy / Game Boy Color (`src/core`):
 
 ```
 GameBoy
@@ -93,6 +113,21 @@ GameBoy
  │   ├─ OamDma
  │   └─ Hdma              CGB general / H-Blank VRAM DMA
  └─ Cpu                   SM83, M-cycle timed (every access ticks the Bus)
+```
+
+Game Boy Advance (`src/gba`):
+
+```
+Gba
+ ├─ Backup                SRAM, Flash 64K/128K, EEPROM 512B/8K (detected from the ROM)
+ ├─ Gpio                  cartridge real time clock (Pokemon R/S/E, Boktai)
+ ├─ Interrupts            IE / IF / IME
+ ├─ Ppu                   modes 0-5, text/affine BGs, sprites, windows, blending, mosaic
+ ├─ Timers / Keypad       4 cascading timers, KEYINPUT/KEYCNT
+ ├─ Bus                   memory map with wait states, I/O registers
+ │   └─ Dma               4 channels: immediate, H-Blank, V-Blank
+ ├─ Cpu                   ARM7TDMI: ARM + Thumb, banked modes, IRQs
+ └─ Bios                  high-level emulation of the BIOS calls (no BIOS file needed)
 ```
 
 `src/frontend` contains the terminal layer: `Terminal` (raw mode, RAII
@@ -117,7 +152,10 @@ Results:
 - Blargg `cpu_instrs`: all 11 tests pass.
 - Blargg `instr_timing`: passes.
 - `cgb-acid2` and `dmg-acid2`: render correctly.
-- Headless speed: roughly 1500–3000 fps (25–50× real time).
+- jsmolka `gba-tests`: arm, thumb, memory, bios, sram, flash64 and flash128
+  all pass.
+- Headless speed: roughly 1500–3000 fps for Game Boy games, and 6–18× real
+  time for GBA games.
 
 ## Not supported
 
@@ -125,5 +163,7 @@ Results:
 - Link cable.
 - MBC7 (Kirby Tilt 'n' Tumble, accelerometer), HuC3, MBC6 and the Pocket
   Camera.
+- GBA: sound, link cable, the solar sensor (Boktai) and tilt or gyro
+  cartridges. Sprite timing limits and prefetch timing are approximated.
 - Pixel-FIFO-exact mid-scanline effects (the renderer draws one scanline at
   a time).

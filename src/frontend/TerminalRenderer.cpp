@@ -37,6 +37,8 @@ TerminalRenderer::TerminalRenderer(Terminal& terminal, ColorMode mode, double ma
       mapper_(0),
       cols_(0),
       rows_(0),
+      frameWidth_(gb::kScreenWidth),
+      frameHeight_(gb::kScreenHeight),
       outCols_(0),
       outRows_(0),
       originX_(1),
@@ -57,11 +59,11 @@ void TerminalRenderer::relayout() {
     cols_ = s.cols;
     rows_ = s.rows;
 
-    double scale = std::min(static_cast<double>(cols_) / gb::kScreenWidth,
-                            static_cast<double>(rows_ * 2) / gb::kScreenHeight);
+    double scale = std::min(static_cast<double>(cols_) / frameWidth_,
+                            static_cast<double>(rows_ * 2) / frameHeight_);
     scale = std::min(scale, maxScale_);
-    int pixW = static_cast<int>(gb::kScreenWidth * scale);
-    int pixH = static_cast<int>(gb::kScreenHeight * scale);
+    int pixW = static_cast<int>(frameWidth_ * scale);
+    int pixH = static_cast<int>(frameHeight_ * scale);
     tooSmall_ = pixW < 32 || pixH < 28;
 
     outCols_ = std::max(1, pixW);
@@ -73,16 +75,16 @@ void TerminalRenderer::relayout() {
 
     srcX_.resize(static_cast<size_t>(outCols_));
     for (int x = 0; x < outCols_; ++x) {
-        srcX_[static_cast<size_t>(x)] = std::min(gb::kScreenWidth - 1, static_cast<int>(x / scale));
+        srcX_[static_cast<size_t>(x)] = std::min(frameWidth_ - 1, static_cast<int>(x / scale));
     }
     srcTop_.resize(static_cast<size_t>(outRows_));
     srcBottom_.resize(static_cast<size_t>(outRows_));
     for (int y = 0; y < outRows_; ++y) {
         int top = 2 * y;
         int bottom = 2 * y + 1;
-        srcTop_[static_cast<size_t>(y)] = std::min(gb::kScreenHeight - 1, static_cast<int>(top / scale));
+        srcTop_[static_cast<size_t>(y)] = std::min(frameHeight_ - 1, static_cast<int>(top / scale));
         srcBottom_[static_cast<size_t>(y)] =
-            bottom < pixH ? std::min(gb::kScreenHeight - 1, static_cast<int>(bottom / scale)) : -1;
+            bottom < pixH ? std::min(frameHeight_ - 1, static_cast<int>(bottom / scale)) : -1;
     }
     invalidate();
 }
@@ -132,13 +134,18 @@ void TerminalRenderer::drawStatus(std::string& out, const std::string& status) {
 
 void TerminalRenderer::present(const gb::FrameBuffer& frame, const std::string& status) {
     if (!mapper_) return;
+    if (frame.width() != frameWidth_ || frame.height() != frameHeight_) {
+        frameWidth_ = frame.width();
+        frameHeight_ = frame.height();
+        relayout();
+    }
     out_.clear();
     out_ += "\x1b[?2026h";  // begin synchronized update (ignored if unsupported)
 
     if (tooSmall_) {
         if (lastStatus_ != "\x01") {
             lastStatus_ = "\x01";
-            out_ += "\x1b[0m\x1b[2J\x1b[1;1HTerminal too small - enlarge it (160x72 for full size)";
+            out_ += "\x1b[0m\x1b[2J\x1b[1;1HTerminal too small - enlarge it";
         }
         out_ += "\x1b[?2026l";
         terminal_.write(out_);

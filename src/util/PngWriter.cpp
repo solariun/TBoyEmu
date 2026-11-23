@@ -30,8 +30,8 @@ void writeChunk(std::ofstream& out, const char* type, const std::vector<unsigned
 }  // namespace
 
 bool PngWriter::write(const std::string& path, const gb::FrameBuffer& frame) {
-    const int w = gb::kScreenWidth;
-    const int h = gb::kScreenHeight;
+    const int w = frame.width();
+    const int h = frame.height();
     std::vector<unsigned char> raw;
     raw.reserve(static_cast<size_t>((w * 3 + 1) * h));
     for (int y = 0; y < h; ++y) {

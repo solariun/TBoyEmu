@@ -48,14 +48,15 @@ std::string Options::parse(int argc, char** argv) {
 
 std::string Options::usage(const char* program) {
     std::string p = program;
-    return "TBoyEmu - Game Boy / Game Boy Color emulator for 256-color terminals\n"
+    return "TBoyEmu - Game Boy / Game Boy Color / Game Boy Advance emulator for 256-color terminals\n"
            "\n"
-           "usage: " + p + " [options] [rom.gb|rom.gbc|rom.zip|directory]\n"
+           "usage: " + p + " [options] [rom.gb|rom.gbc|rom.gba|rom.zip|directory]\n"
            "\n"
-           "  With a directory (default: \"Nintendo - Game Boy Color\" if present,\n"
-           "  otherwise the current directory) a ROM browser is shown.\n"
+           "  Without a ROM, every game under roms/ (and its subfolders) is listed,\n"
+           "  tagged GB, GB/GBC, GBC or GBA.\n"
            "\n"
            "controls:  arrows = D-pad   X = A   Z = B   C = Select   Space/Enter = Start\n"
+           "           A = L   D = R (Game Boy Advance)\n"
            "           P = pause   S = save screen to <rom>-<date>.txt   Esc = back / quit\n"
            "\n"
            "options:\n"

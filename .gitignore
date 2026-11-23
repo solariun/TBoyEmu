@@ -3,10 +3,11 @@
 /tboyemu
 
 # ROMs and battery saves (not distributable)
-/Nintendo - Game Boy Color/
+/roms/
 *.gb
 *.gbc
 *.sgb
+*.gba
 *.zip
 *.sav
 

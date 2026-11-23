@@ -5,6 +5,7 @@ namespace gb {
 Joypad::Joypad(InterruptController& ic) : ic_(ic), select_(0x30), pressed_(0) {}
 
 void Joypad::setButton(Button button, bool pressed) {
+    if (static_cast<int>(button) >= 8) return;  // L/R: Game Boy Advance only
     u8 bit = static_cast<u8>(1u << static_cast<int>(button));
     bool wasPressed = (pressed_ & bit) != 0;
     if (pressed) {

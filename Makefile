@@ -13,8 +13,8 @@ ifeq ($(UNAME_S),Linux)
 endif
 
 TARGET := tboyemu
-SRCS   := $(wildcard src/core/*.cpp) $(wildcard src/util/*.cpp) \
-          $(wildcard src/frontend/*.cpp) src/main.cpp
+SRCS   := $(wildcard src/core/*.cpp) $(wildcard src/gba/*.cpp) $(wildcard src/util/*.cpp) \
+          $(wildcard src/frontend/*.cpp) src/MachineFactory.cpp src/main.cpp
 OBJS   := $(SRCS:src/%.cpp=build/%.o)
 DEPS   := $(OBJS:.o=.d)
 

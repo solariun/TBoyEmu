@@ -4,12 +4,15 @@
 #include <string>
 #include <vector>
 
+#include "../core/Machine.h"
 #include "Keyboard.h"
 #include "Terminal.h"
 
 namespace term {
 
-// Full screen list of the ROMs in a directory with type-to-filter search.
+// Start screen: every ROM found under a folder (and its subfolders), each
+// tagged with the console it is for (read from the ROM header), with
+// type-to-filter search over names and system tags.
 class RomBrowser {
 public:
     RomBrowser(Terminal& terminal, Keyboard& keyboard, const std::string& directory);
@@ -22,10 +25,14 @@ private:
     struct Entry {
         std::string path;
         std::string name;
+        gb::System system;
+        bool known;  // header could be read
     };
 
+    void scan(const std::string& directory, int depth, std::vector<std::string>& files);
     void applyFilter();
     void draw(const std::string& message);
+    void drawProgress(size_t done, size_t total);
 
     Terminal& terminal_;
     Keyboard& keyboard_;
@@ -35,6 +42,7 @@ private:
     std::string filter_;
     size_t selected_;  // index into visible_
     size_t scroll_;
+    int counts_[4];    // ROMs per gb::System
 };
 
 }  // namespace term

@@ -1,26 +1,11 @@
 #ifndef TBOYEMU_CORE_PPU_H
 #define TBOYEMU_CORE_PPU_H
 
-#include <algorithm>
-#include <vector>
-
+#include "FrameBuffer.h"
 #include "InterruptController.h"
 #include "Types.h"
 
 namespace gb {
-
-// 160x144 image, one RGB555 color (0bbbbbgggggrrrrr, CGB native) per pixel.
-class FrameBuffer {
-public:
-    FrameBuffer() : pixels_(kScreenWidth * kScreenHeight, 0x7FFF) {}
-    u16 at(int x, int y) const { return pixels_[y * kScreenWidth + x]; }
-    u16* row(int y) { return &pixels_[y * kScreenWidth]; }
-    const u16* row(int y) const { return &pixels_[y * kScreenWidth]; }
-    void fill(u16 color) { std::fill(pixels_.begin(), pixels_.end(), color); }
-
-private:
-    std::vector<u16> pixels_;
-};
 
 // Picture Processing Unit: LCD timing state machine, STAT interrupts,
 // VRAM/OAM, CGB palettes and a scanline renderer.

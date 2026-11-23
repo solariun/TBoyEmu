@@ -23,9 +23,9 @@ const int kDotsPerFrame = kDotsPerLine * kLinesPerFrame;  // 70224
 const int kScreenWidth = 160;
 const int kScreenHeight = 144;
 
-// The eight physical buttons of the console.
-enum class Button : u8 { Right = 0, Left, Up, Down, A, B, Select, Start };
-const int kButtonCount = 8;
+// Game Boy buttons first; L and R exist only on the Game Boy Advance.
+enum class Button : u8 { Right = 0, Left, Up, Down, A, B, Select, Start, L, R };
+const int kButtonCount = 10;
 
 // Interrupt request bits (IF / IE registers).
 namespace irq {

@@ -3,7 +3,7 @@
 
 #include <string>
 
-#include "../core/Ppu.h"
+#include "../core/FrameBuffer.h"
 
 namespace util {
 

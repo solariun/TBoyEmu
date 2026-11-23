@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <fstream>
-#include <iterator>
+#include <limits>
 #include <stdexcept>
 
 namespace util {
@@ -16,39 +16,112 @@ using gb::u32;
 
 namespace {
 
-u16 le16(const std::vector<u8>& d, size_t at) {
-    if (at + 2 > d.size()) throw std::runtime_error("corrupt zip archive");
-    return static_cast<u16>(d[at] | (d[at + 1] << 8));
+u16 le16(const u8* p) { return static_cast<u16>(p[0] | (p[1] << 8)); }
+u32 le32(const u8* p) {
+    return static_cast<u32>(p[0]) | (static_cast<u32>(p[1]) << 8) | (static_cast<u32>(p[2]) << 16) |
+           (static_cast<u32>(p[3]) << 24);
 }
 
-u32 le32(const std::vector<u8>& d, size_t at) {
-    if (at + 4 > d.size()) throw std::runtime_error("corrupt zip archive");
-    return static_cast<u32>(d[at]) | (static_cast<u32>(d[at + 1]) << 8) |
-           (static_cast<u32>(d[at + 2]) << 16) | (static_cast<u32>(d[at + 3]) << 24);
-}
+// Minimal random-access zip reader.
+class ZipReader {
+public:
+    explicit ZipReader(const std::string& path) : in_(path.c_str(), std::ios::binary) {
+        if (!in_) throw std::runtime_error("cannot open " + path);
+        in_.seekg(0, std::ios::end);
+        size_ = static_cast<size_t>(in_.tellg());
+    }
 
-bool hasRomExtension(const std::string& name) {
-    std::string n = toLower(name);
-    return endsWith(n, ".gb") || endsWith(n, ".gbc") || endsWith(n, ".sgb");
-}
+    // Finds the first ROM entry and returns its decompressed bytes (at most
+    // `limit` of them).
+    RomImage readFirstRom(size_t limit) {
+        // End Of Central Directory record, possibly followed by a comment.
+        size_t tail = std::min(size_, static_cast<size_t>(0xFFFF + 22));
+        std::vector<u8> end = readAt(size_ - tail, tail);
+        size_t eocd = std::string::npos;
+        for (size_t i = tail >= 22 ? tail - 22 + 1 : 0; i-- > 0;) {
+            if (le32(&end[i]) == 0x06054B50) {
+                eocd = i;
+                break;
+            }
+        }
+        if (eocd == std::string::npos) throw std::runtime_error("not a zip archive");
+        u16 entries = le16(&end[eocd + 10]);
+        u32 dirSize = le32(&end[eocd + 12]);
+        u32 dirOffset = le32(&end[eocd + 16]);
+        std::vector<u8> dir = readAt(dirOffset, dirSize);
 
-std::vector<u8> inflateRaw(const u8* data, size_t size, size_t expected) {
-    std::vector<u8> out(expected);
-    z_stream zs;
-    zs.zalloc = Z_NULL;
-    zs.zfree = Z_NULL;
-    zs.opaque = Z_NULL;
-    zs.next_in = const_cast<Bytef*>(data);
-    zs.avail_in = static_cast<uInt>(size);
-    if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) throw std::runtime_error("zlib init failed");
-    zs.next_out = out.empty() ? Z_NULL : &out[0];
-    zs.avail_out = static_cast<uInt>(out.size());
-    int rc = inflate(&zs, Z_FINISH);
-    inflateEnd(&zs);
-    if (rc != Z_STREAM_END) throw std::runtime_error("failed to decompress ROM from zip");
-    out.resize(zs.total_out);
-    return out;
-}
+        size_t p = 0;
+        for (u16 n = 0; n < entries; ++n) {
+            if (p + 46 > dir.size() || le32(&dir[p]) != 0x02014B50) throw std::runtime_error("corrupt zip directory");
+            u16 method = le16(&dir[p + 10]);
+            u32 compressed = le32(&dir[p + 20]);
+            u32 uncompressed = le32(&dir[p + 24]);
+            u16 nameLen = le16(&dir[p + 28]);
+            u16 extraLen = le16(&dir[p + 30]);
+            u16 commentLen = le16(&dir[p + 32]);
+            u32 local = le32(&dir[p + 42]);
+            if (p + 46 + nameLen > dir.size()) throw std::runtime_error("corrupt zip directory");
+            std::string name(reinterpret_cast<const char*>(&dir[p + 46]), nameLen);
+            p += 46u + nameLen + extraLen + commentLen;
+            if (!RomLoader::isRomName(name)) continue;
+
+            std::vector<u8> header = readAt(local, 30);
+            if (le32(&header[0]) != 0x04034B50) throw std::runtime_error("corrupt zip entry");
+            size_t dataAt = local + 30u + le16(&header[26]) + le16(&header[28]);
+            size_t want = std::min(static_cast<size_t>(uncompressed), limit);
+
+            RomImage image;
+            image.name = name;
+            if (method == 0) {
+                image.data = readAt(dataAt, want);
+            } else if (method == 8) {
+                // Compressed input needed for `want` output bytes is unknown;
+                // for a header peek a small slice is plenty.
+                size_t input = want < uncompressed ? std::min<size_t>(compressed, want + 64 * 1024) : compressed;
+                std::vector<u8> packed = readAt(dataAt, input);
+                image.data = inflate(packed, want);
+            } else {
+                throw std::runtime_error("unsupported zip compression method");
+            }
+            return image;
+        }
+        throw std::runtime_error("no ROM file inside the zip archive");
+    }
+
+private:
+    std::vector<u8> readAt(size_t offset, size_t bytes) {
+        if (offset > size_ || bytes > size_ - offset) throw std::runtime_error("truncated zip archive");
+        std::vector<u8> buf(bytes);
+        in_.seekg(static_cast<std::streamoff>(offset));
+        if (bytes) in_.read(reinterpret_cast<char*>(&buf[0]), static_cast<std::streamsize>(bytes));
+        if (!in_) throw std::runtime_error("read error in zip archive");
+        return buf;
+    }
+
+    static std::vector<u8> inflate(std::vector<u8>& packed, size_t want) {
+        std::vector<u8> out(want);
+        z_stream zs;
+        zs.zalloc = Z_NULL;
+        zs.zfree = Z_NULL;
+        zs.opaque = Z_NULL;
+        zs.next_in = packed.empty() ? Z_NULL : &packed[0];
+        zs.avail_in = static_cast<uInt>(packed.size());
+        if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) throw std::runtime_error("zlib init failed");
+        zs.next_out = out.empty() ? Z_NULL : &out[0];
+        zs.avail_out = static_cast<uInt>(out.size());
+        int rc = ::inflate(&zs, Z_SYNC_FLUSH);
+        while (rc == Z_OK && zs.avail_out > 0 && zs.avail_in > 0) rc = ::inflate(&zs, Z_SYNC_FLUSH);
+        inflateEnd(&zs);
+        if (rc != Z_OK && rc != Z_STREAM_END && rc != Z_BUF_ERROR) {
+            throw std::runtime_error("failed to decompress ROM from zip");
+        }
+        out.resize(zs.total_out);
+        return out;
+    }
+
+    std::ifstream in_;
+    size_t size_;
+};
 
 }  // namespace
 
@@ -61,8 +134,13 @@ bool endsWith(const std::string& s, const std::string& suffix) {
     return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+bool RomLoader::isRomName(const std::string& name) {
+    std::string n = toLower(name);
+    return endsWith(n, ".gb") || endsWith(n, ".gbc") || endsWith(n, ".sgb") || endsWith(n, ".gba");
+}
+
 bool RomLoader::isRomFile(const std::string& path) {
-    return hasRomExtension(path) || endsWith(toLower(path), ".zip");
+    return isRomName(path) || endsWith(toLower(path), ".zip");
 }
 
 std::string RomLoader::savePathFor(const std::string& romPath) {
@@ -74,61 +152,25 @@ std::string RomLoader::savePathFor(const std::string& romPath) {
     return romPath + ".sav";
 }
 
-std::vector<u8> RomLoader::readFile(const std::string& path) {
+RomImage RomLoader::read(const std::string& path, size_t limit) {
+    if (endsWith(toLower(path), ".zip")) {
+        ZipReader zip(path);
+        return zip.readFirstRom(limit);
+    }
     std::ifstream in(path.c_str(), std::ios::binary);
     if (!in) throw std::runtime_error("cannot open " + path);
-    return std::vector<u8>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.seekg(0, std::ios::end);
+    size_t size = static_cast<size_t>(in.tellg());
+    in.seekg(0);
+    RomImage image;
+    image.name = path.substr(path.find_last_of('/') == std::string::npos ? 0 : path.find_last_of('/') + 1);
+    image.data.resize(std::min(size, limit));
+    if (!image.data.empty()) in.read(reinterpret_cast<char*>(&image.data[0]), static_cast<std::streamsize>(image.data.size()));
+    return image;
 }
 
-std::vector<u8> RomLoader::load(const std::string& path) {
-    std::vector<u8> data = readFile(path);
-    if (endsWith(toLower(path), ".zip")) return extractFromZip(data);
-    return data;
-}
+RomImage RomLoader::load(const std::string& path) { return read(path, std::numeric_limits<size_t>::max()); }
 
-std::vector<u8> RomLoader::extractFromZip(const std::vector<u8>& zip) {
-    // Locate the End Of Central Directory record (scan backwards past an
-    // optional archive comment).
-    if (zip.size() < 22) throw std::runtime_error("not a zip archive");
-    size_t eocd = std::string::npos;
-    size_t lowest = zip.size() > 0xFFFF + 22 ? zip.size() - (0xFFFF + 22) : 0;
-    for (size_t i = zip.size() - 22 + 1; i-- > lowest;) {
-        if (le32(zip, i) == 0x06054B50) {
-            eocd = i;
-            break;
-        }
-    }
-    if (eocd == std::string::npos) throw std::runtime_error("zip directory not found");
-
-    u16 entries = le16(zip, eocd + 10);
-    size_t cursor = le32(zip, eocd + 16);
-    for (u16 n = 0; n < entries; ++n) {
-        if (le32(zip, cursor) != 0x02014B50) throw std::runtime_error("corrupt zip directory");
-        u16 method = le16(zip, cursor + 10);
-        u32 compressed = le32(zip, cursor + 20);
-        u32 uncompressed = le32(zip, cursor + 24);
-        u16 nameLen = le16(zip, cursor + 28);
-        u16 extraLen = le16(zip, cursor + 30);
-        u16 commentLen = le16(zip, cursor + 32);
-        u32 localOffset = le32(zip, cursor + 42);
-        if (cursor + 46 + nameLen > zip.size()) throw std::runtime_error("corrupt zip directory");
-        std::string name(zip.begin() + static_cast<long>(cursor + 46),
-                         zip.begin() + static_cast<long>(cursor + 46 + nameLen));
-        cursor += 46u + nameLen + extraLen + commentLen;
-
-        if (!hasRomExtension(name)) continue;
-
-        if (le32(zip, localOffset) != 0x04034B50) throw std::runtime_error("corrupt zip entry");
-        size_t dataAt = localOffset + 30u + le16(zip, localOffset + 26) + le16(zip, localOffset + 28);
-        if (dataAt + compressed > zip.size()) throw std::runtime_error("truncated zip entry");
-        if (method == 0) {
-            return std::vector<u8>(zip.begin() + static_cast<long>(dataAt),
-                                   zip.begin() + static_cast<long>(dataAt + compressed));
-        }
-        if (method == 8) return inflateRaw(&zip[dataAt], compressed, uncompressed);
-        throw std::runtime_error("unsupported zip compression method");
-    }
-    throw std::runtime_error("no .gb/.gbc file inside the zip archive");
-}
+RomImage RomLoader::loadHeader(const std::string& path, size_t bytes) { return read(path, bytes); }
 
 }  // namespace util

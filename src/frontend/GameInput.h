@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "../core/GameBoy.h"
+#include "../core/Machine.h"
 #include "Keyboard.h"
 #include "NativeKeyboard.h"
 
@@ -14,6 +14,7 @@ namespace term {
 // Maps the keyboard to Game Boy buttons.
 //
 //   Arrows = D-pad   X = A   Z = B   C = Select   Space/Enter = Start
+//   A = L   D = R (Game Boy Advance shoulder buttons)
 //   Esc = leave the game   P = pause   S = save the screen as a .txt file
 //
 // Key state comes from the best available source:
@@ -33,7 +34,7 @@ public:
 
     void handle(const KeyEvent& event, Clock::time_point now);
     void update(Clock::time_point now);
-    void applyTo(gb::GameBoy& gameboy) const;
+    void applyTo(gb::Machine& machine) const;
     bool isPressed(gb::Button button) const { return pressed_[static_cast<int>(button)]; }
     void releaseAll();
 

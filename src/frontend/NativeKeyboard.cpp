@@ -36,6 +36,8 @@ public:
             {6, 6},      // Z -> B
             {8, 8},      // C -> Select
             {49, 36},    // Space / Return -> Start
+            {0, 0},      // A -> L
+            {2, 2},      // D -> R
         };
         const CGKeyCode* k = keys[static_cast<int>(button)];
         return CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, k[0]) ||
@@ -66,6 +68,7 @@ namespace {
 const int kEvdevKeys[gb::kButtonCount][2] = {
     {KEY_RIGHT, KEY_RIGHT}, {KEY_LEFT, KEY_LEFT}, {KEY_UP, KEY_UP},       {KEY_DOWN, KEY_DOWN},
     {KEY_X, KEY_X},         {KEY_Z, KEY_Z},       {KEY_C, KEY_C},         {KEY_SPACE, KEY_ENTER},
+    {KEY_A, KEY_A},         {KEY_D, KEY_D},
 };
 
 // dlsym() returns void*; copying avoids the object->function pointer cast
@@ -158,6 +161,7 @@ public:
         static const unsigned long syms[gb::kButtonCount][2] = {
             {0xFF53, 0xFF53}, {0xFF51, 0xFF51}, {0xFF52, 0xFF52}, {0xFF54, 0xFF54},
             {'x', 'x'},       {'z', 'z'},       {'c', 'c'},       {' ', 0xFF0D},
+            {'a', 'a'},       {'d', 'd'},
         };
         for (int b = 0; b < gb::kButtonCount; ++b) {
             for (int j = 0; j < 2; ++j) codes_[b][j] = toKeycode(display_, syms[b][j]);

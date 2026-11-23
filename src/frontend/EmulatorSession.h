@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 
+#include "../core/Machine.h"
 #include "ColorMapper.h"
 #include "Keyboard.h"
 #include "Options.h"
@@ -23,13 +24,13 @@ public:
     void run(const std::string& romPath);
 
 private:
-    const ColorMapper& mapperFor(bool cgbGame);
+    const ColorMapper& mapperFor(const gb::Machine& machine);
 
     Terminal& terminal_;
     Keyboard& keyboard_;
     const Options& options_;
-    std::unique_ptr<ColorMapper> cgbColors_;
-    std::unique_ptr<ColorMapper> dmgColors_;
+    std::unique_ptr<ColorMapper> correctedColors_;
+    std::unique_ptr<ColorMapper> plainColors_;
 };
 
 // Runs a ROM without a terminal for a fixed number of frames (automated

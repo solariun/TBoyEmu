@@ -127,6 +127,12 @@ void Cpu::serviceInterrupt(u8 pending) {
     int bit = 0;
     while (!(pending & (1 << bit))) ++bit;
     ime_ = false;
+    if (haltBug_) {
+        // EI; HALT with an interrupt pending: the interrupt is taken right
+        // away and returns to the HALT instruction itself.
+        haltBug_ = false;
+        r_.pc = static_cast<u16>(r_.pc - 1);
+    }
     idle();
     push16(r_.pc);  // includes one internal cycle
     ic_.acknowledge(static_cast<u8>(1 << bit));

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "../core/Ppu.h"
+#include "../core/FrameBuffer.h"
 #include "ColorMapper.h"
 #include "Terminal.h"
 
@@ -13,9 +13,9 @@ namespace term {
 
 enum class ColorMode { Xterm256, TrueColor };
 
-// Draws Game Boy frames with "upper half block" characters: each terminal
+// Draws Game Boy / Game Boy Advance frames with "upper half block" characters: each terminal
 // cell shows two vertical pixels (foreground = top, background = bottom), so
-// the native 160x144 picture needs 160 columns x 72 rows.  Smaller terminals
+// the native picture needs 160x72 cells (Game Boy) or 240x80 (GBA).  Smaller terminals
 // get a nearest-neighbour downscale.  Only cells that changed since the last
 // frame are sent, inside a synchronized-update block, to keep the byte rate
 // low enough for 60 fps.
@@ -41,6 +41,7 @@ private:
     const ColorMapper* mapper_;
 
     int cols_, rows_;
+    int frameWidth_, frameHeight_;  // source picture size (GB or GBA)
     int outCols_, outRows_;  // picture size in cells
     int originX_, originY_;  // 1-based terminal position of the picture
     bool hasStatusRow_;

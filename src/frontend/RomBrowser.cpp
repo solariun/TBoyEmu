@@ -1,26 +1,55 @@
 #include "RomBrowser.h"
 
 #include <dirent.h>
+#include <sys/stat.h>
 
 #include <algorithm>
 
+#include "../MachineFactory.h"
 #include "../util/RomLoader.h"
 
 namespace term {
 
+namespace {
+
+// Colors of the system tags (xterm-256 palette).
+const char* tagStyle(gb::System system) {
+    switch (system) {
+        case gb::System::GameBoy: return "\x1b[38;5;16;48;5;107m";       // olive green
+        case gb::System::GameBoyDual: return "\x1b[38;5;16;48;5;73m";    // teal
+        case gb::System::GameBoyColor: return "\x1b[38;5;231;48;5;97m";  // purple
+        default: return "\x1b[38;5;231;48;5;61m";                        // indigo (GBA)
+    }
+}
+
+std::string padRight(const std::string& s, size_t width) {
+    return s.size() >= width ? s.substr(0, width) : s + std::string(width - s.size(), ' ');
+}
+
+}  // namespace
+
 RomBrowser::RomBrowser(Terminal& terminal, Keyboard& keyboard, const std::string& directory)
     : terminal_(terminal), keyboard_(keyboard), directory_(directory), selected_(0), scroll_(0) {
-    DIR* dir = opendir(directory.c_str());
-    if (dir) {
-        while (dirent* ent = readdir(dir)) {
-            std::string file = ent->d_name;
-            if (file.empty() || file[0] == '.' || !util::RomLoader::isRomFile(file)) continue;
-            Entry e;
-            e.path = directory + "/" + file;
-            e.name = file.substr(0, file.find_last_of('.'));
-            entries_.push_back(e);
+    for (int i = 0; i < 4; ++i) counts_[i] = 0;
+    std::vector<std::string> files;
+    scan(directory, 0, files);
+
+    // Read every ROM header to find out which console it is for.
+    for (size_t i = 0; i < files.size(); ++i) {
+        if (i % 16 == 0) drawProgress(i, files.size());
+        Entry e;
+        e.path = files[i];
+        std::string file = files[i].substr(files[i].find_last_of('/') + 1);
+        e.name = file.substr(0, file.find_last_of('.'));
+        try {
+            e.system = emu::probeSystem(e.path);
+            e.known = true;
+            ++counts_[static_cast<int>(e.system)];
+        } catch (const std::exception&) {
+            e.system = gb::System::GameBoy;
+            e.known = false;
         }
-        closedir(dir);
+        entries_.push_back(e);
     }
     std::sort(entries_.begin(), entries_.end(), [](const Entry& a, const Entry& b) {
         return util::toLower(a.name) < util::toLower(b.name);
@@ -28,13 +57,42 @@ RomBrowser::RomBrowser(Terminal& terminal, Keyboard& keyboard, const std::string
     applyFilter();
 }
 
+void RomBrowser::scan(const std::string& directory, int depth, std::vector<std::string>& files) {
+    if (depth > 4) return;
+    DIR* dir = opendir(directory.c_str());
+    if (!dir) return;
+    std::vector<std::string> subdirs;
+    while (dirent* ent = readdir(dir)) {
+        std::string name = ent->d_name;
+        if (name.empty() || name[0] == '.') continue;
+        std::string path = directory + "/" + name;
+        struct stat st;
+        if (stat(path.c_str(), &st) != 0) continue;
+        if (S_ISDIR(st.st_mode)) {
+            subdirs.push_back(path);
+        } else if (util::RomLoader::isRomFile(name)) {
+            files.push_back(path);
+        }
+    }
+    closedir(dir);
+    for (size_t i = 0; i < subdirs.size(); ++i) scan(subdirs[i], depth + 1, files);
+}
+
+void RomBrowser::drawProgress(size_t done, size_t total) {
+    std::string out = "\x1b[0m\x1b[2J\x1b[1;1H\x1b[1;38;5;231;48;5;25m TBoyEmu \x1b[0m  Reading ROM headers in " +
+                      directory_ + "/ ... " + std::to_string(done) + "/" + std::to_string(total);
+    terminal_.write(out);
+}
+
 void RomBrowser::applyFilter() {
     visible_.clear();
     std::string needle = util::toLower(filter_);
     for (size_t i = 0; i < entries_.size(); ++i) {
-        if (needle.empty() || util::toLower(entries_[i].name).find(needle) != std::string::npos) {
-            visible_.push_back(i);
-        }
+        const Entry& e = entries_[i];
+        std::string tag = util::toLower(gb::systemTag(e.system));
+        bool match = needle.empty() || util::toLower(e.name).find(needle) != std::string::npos ||
+                     (e.known && tag.find(needle) == 0);
+        if (match) visible_.push_back(i);
     }
     if (selected_ >= visible_.size()) selected_ = visible_.empty() ? 0 : visible_.size() - 1;
 }
@@ -44,22 +102,33 @@ void RomBrowser::draw(const std::string& message) {
     int listRows = std::max(1, s.rows - 5);
     if (selected_ < scroll_) scroll_ = selected_;
     if (selected_ >= scroll_ + static_cast<size_t>(listRows)) scroll_ = selected_ - static_cast<size_t>(listRows) + 1;
-    size_t width = static_cast<size_t>(std::max(10, s.cols - 4));
+    size_t width = static_cast<size_t>(std::max(10, s.cols - 13));
 
     std::string out = "\x1b[?2026h\x1b[0m\x1b[2J\x1b[1;1H";
-    out += "\x1b[1;38;5;231;48;5;25m TBoyEmu \x1b[0m  Game Boy Color for the terminal - ";
-    out += std::to_string(visible_.size()) + "/" + std::to_string(entries_.size()) + " ROMs";
+    out += "\x1b[1;38;5;231;48;5;25m TBoyEmu \x1b[0m  " + std::to_string(visible_.size()) + "/" +
+           std::to_string(entries_.size()) + " games:  ";
+    for (int i = 0; i < 4; ++i) {
+        gb::System sys = static_cast<gb::System>(i);
+        out += std::string(tagStyle(sys)) + " " + gb::systemTag(sys) + " \x1b[0m " + std::to_string(counts_[i]) + "  ";
+    }
     out += "\x1b[2;1H\x1b[38;5;250m Search: \x1b[0m" + filter_ + "\x1b[38;5;244m_\x1b[0m";
 
     for (int r = 0; r < listRows; ++r) {
         size_t i = scroll_ + static_cast<size_t>(r);
         if (i >= visible_.size()) break;
+        const Entry& e = entries_[visible_[i]];
         out += "\x1b[" + std::to_string(r + 4) + ";1H";
-        std::string name = entries_[visible_[i]].name.substr(0, width);
-        if (i == selected_) {
-            out += "\x1b[1;38;5;16;48;5;220m > " + name + std::string(width - name.size(), ' ') + "\x1b[0m";
+        out += (i == selected_) ? "\x1b[1;38;5;220m > \x1b[0m" : "   ";
+        if (e.known) {
+            out += std::string(tagStyle(e.system)) + " " + padRight(gb::systemTag(e.system), 6) + " \x1b[0m ";
         } else {
-            out += "   " + name;
+            out += "\x1b[38;5;231;48;5;124m  ???   \x1b[0m ";
+        }
+        std::string name = padRight(e.name, width);
+        if (i == selected_) {
+            out += "\x1b[1;38;5;16;48;5;220m" + name + "\x1b[0m";
+        } else {
+            out += name;
         }
     }
     if (visible_.empty()) out += "\x1b[4;1H   (no matching ROMs)";
@@ -68,7 +137,7 @@ void RomBrowser::draw(const std::string& message) {
     if (!message.empty()) {
         out += "\x1b[38;5;203m" + message.substr(0, static_cast<size_t>(s.cols));
     } else {
-        out += " Up/Down/PgUp/PgDn: move   Enter: play   type: search   Esc: quit";
+        out += " Up/Down/PgUp/PgDn: move   Enter: play   type: search (name or gb/gbc/gba)   Esc: quit";
     }
     out += "\x1b[0m\x1b[?2026l";
     terminal_.write(out);

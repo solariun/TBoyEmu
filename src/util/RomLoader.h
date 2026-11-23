@@ -1,6 +1,7 @@
 #ifndef TBOYEMU_UTIL_ROMLOADER_H
 #define TBOYEMU_UTIL_ROMLOADER_H
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -8,19 +9,29 @@
 
 namespace util {
 
-// Loads a ROM image from a plain .gb/.gbc file or from inside a .zip
-// archive (stored or deflated entries, via zlib).
+// A ROM image and the name of the file it came from (the entry name when
+// it was inside a zip archive).
+struct RomImage {
+    std::vector<gb::u8> data;
+    std::string name;
+};
+
+// Loads ROM images from plain .gb/.gbc/.gba files or from inside .zip
+// archives (stored or deflated entries, via zlib).  The zip reader seeks
+// instead of loading the whole archive, so peeking at a header is cheap.
 class RomLoader {
 public:
     // Throws std::runtime_error on failure.
-    static std::vector<gb::u8> load(const std::string& path);
+    static RomImage load(const std::string& path);
+    // Only the first `bytes` bytes (header inspection for the ROM list).
+    static RomImage loadHeader(const std::string& path, size_t bytes);
 
-    static bool isRomFile(const std::string& path);  // .gb .gbc .sgb .zip
+    static bool isRomFile(const std::string& path);  // .gb .gbc .sgb .gba .zip
+    static bool isRomName(const std::string& name);  // .gb .gbc .sgb .gba
     static std::string savePathFor(const std::string& romPath);
 
 private:
-    static std::vector<gb::u8> readFile(const std::string& path);
-    static std::vector<gb::u8> extractFromZip(const std::vector<gb::u8>& zip);
+    static RomImage read(const std::string& path, size_t limit);
 };
 
 std::string toLower(std::string s);

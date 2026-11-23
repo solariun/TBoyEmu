@@ -1,10 +1,14 @@
-// TBoyEmu - Game Boy / Game Boy Color emulator for 256-color terminals.
+// TBoyEmu - Game Boy / Game Boy Color / Game Boy Advance emulator for
+// 256-color terminals.
 //
-//   core/      hardware: Cpu, Bus, Ppu, Timer, Joypad, Serial, Apu, Dma,
-//              Cartridge + Mbc*, all owned by GameBoy
+//   core/      Machine interface + Game Boy (Color) hardware: Cpu, Bus, Ppu,
+//              Timer, Joypad, Serial, Apu, Dma, Cartridge + Mbc*, GameBoy
+//   gba/       Game Boy Advance: Cpu (ARM7TDMI), Bus + Dma, Ppu, Timers,
+//              Keypad, Backup (SRAM/Flash/EEPROM), Bios (HLE), Gba
+//   MachineFactory  picks the console from the ROM header
 //   frontend/  Terminal (raw mode), Keyboard, GameInput, TerminalRenderer,
 //              ColorMapper, RomBrowser, EmulatorSession
-//   util/      RomLoader (.gb/.gbc/.zip), PngWriter
+//   util/      RomLoader (.gb/.gbc/.gba/.zip), PngWriter
 
 #include <sys/stat.h>
 
@@ -25,13 +29,8 @@ bool isDirectory(const std::string& path) {
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
-std::string defaultRomDirectory() {
-    const char* candidates[] = {"Nintendo - Game Boy Color", "roms", "."};
-    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
-        if (isDirectory(candidates[i])) return candidates[i];
-    }
-    return ".";
-}
+// All games live under roms/ (any subfolder layout).
+const char kRomDirectory[] = "roms";
 
 int runInteractive(const term::Options& options) {
     term::Terminal terminal(options.kittyKeyboard);
@@ -70,7 +69,14 @@ int main(int argc, char** argv) {
         std::cout << term::Options::usage(argv[0]);
         return 0;
     }
-    if (options.path.empty()) options.path = defaultRomDirectory();
+    if (options.path.empty()) {
+        options.path = kRomDirectory;
+        if (!isDirectory(options.path)) {
+            std::cerr << "error: no \"" << kRomDirectory << "\" folder here - put your games in " << kRomDirectory
+                      << "/ (subfolders are fine)\n";
+            return 2;
+        }
+    }
 
     try {
         if (options.headless) {

@@ -31,7 +31,10 @@ struct SpriteEntry {
 
 }  // namespace
 
-Ppu::Ppu(InterruptController& ic, bool cgbMode) : ic_(ic), cgb_(cgbMode) { reset(); }
+Ppu::Ppu(InterruptController& ic, bool cgbMode)
+    : ic_(ic), cgb_(cgbMode), back_(kScreenWidth, kScreenHeight), front_(kScreenWidth, kScreenHeight) {
+    reset();
+}
 
 void Ppu::reset() {
     std::memset(vram_, 0, sizeof(vram_));

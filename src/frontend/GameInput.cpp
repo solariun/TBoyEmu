@@ -57,6 +57,8 @@ bool GameInput::mapKey(const KeyEvent& e, Button& button) {
                 case 'z': button = Button::B; return true;
                 case 'c': button = Button::Select; return true;
                 case ' ': button = Button::Start; return true;
+                case 'a': button = Button::L; return true;
+                case 'd': button = Button::R; return true;
                 default: return false;
             }
         default: return false;
@@ -182,8 +184,8 @@ void GameInput::update(Clock::time_point now) {
     if (armed_ && !anyDown && now - lastTerminalKey_ > kIdleDisarm) armed_ = false;
 }
 
-void GameInput::applyTo(gb::GameBoy& gameboy) const {
-    for (int i = 0; i < gb::kButtonCount; ++i) gameboy.setButton(static_cast<Button>(i), pressed_[i]);
+void GameInput::applyTo(gb::Machine& machine) const {
+    for (int i = 0; i < gb::kButtonCount; ++i) machine.setButton(static_cast<Button>(i), pressed_[i]);
 }
 
 bool GameInput::consumePauseToggle() {

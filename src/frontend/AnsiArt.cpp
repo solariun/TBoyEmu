@@ -33,12 +33,12 @@ void appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode
 std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode) {
     std::string out;
     out.reserve(256 * 1024);
-    for (int y = 0; y < gb::kScreenHeight; y += 2) {
+    for (int y = 0; y + 1 < frame.height(); y += 2) {
         const std::uint16_t* top = frame.row(y);
         const std::uint16_t* bottom = frame.row(y + 1);
         bool haveFg = false, haveBg = false;
         std::uint32_t curFg = 0, curBg = 0;
-        for (int x = 0; x < gb::kScreenWidth; ++x) {
+        for (int x = 0; x < frame.width(); ++x) {
             std::uint32_t fg = colorKey(top[x], colors, mode);
             std::uint32_t bg = colorKey(bottom[x], colors, mode);
             if (!haveBg || curBg != bg) {

@@ -10,7 +10,7 @@
 #include <thread>
 #include <vector>
 
-#include "../core/GameBoy.h"
+#include "../MachineFactory.h"
 #include "../util/PngWriter.h"
 #include "../util/RomLoader.h"
 #include "AnsiArt.h"
@@ -23,26 +23,21 @@ namespace {
 
 typedef std::chrono::steady_clock Clock;
 
-// 70224 dots at 4.194304 MHz = 16.742706 ms per frame (59.7275 Hz).
+// 70224 dots at 4.194304 MHz = 16.742706 ms per frame (59.7275 Hz).  The
+// GBA (280896 cycles at 16.777216 MHz) has exactly the same frame rate.
 const Clock::duration kFrameTime = std::chrono::duration_cast<Clock::duration>(
     std::chrono::nanoseconds(1000000000LL * gb::kDotsPerFrame / gb::kCpuClockHz));
 
-std::unique_ptr<gb::GameBoy> loadGame(const std::string& path) {
-    std::unique_ptr<gb::Cartridge> cart = gb::makeUnique<gb::Cartridge>(util::RomLoader::load(path));
-    cart->loadSave(util::RomLoader::savePathFor(path));
-    return gb::makeUnique<gb::GameBoy>(std::move(cart));
-}
-
-std::string formatStatus(const gb::GameBoy& gameboy, double emuFps, double drawFps,
+std::string formatStatus(const gb::Machine& machine, double emuFps, double drawFps,
                          const GameInput& input, bool paused) {
     if (!input.notice().empty()) return " " + input.notice() + "  (or use a kitty-protocol terminal)";
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-                  " %s [%s%s] | %5.1f fps (drawn %4.1f) | keys: %s | arrows X=A Z=B C=Sel Space=Start "
+                  " %s [%s %s] | %5.1f fps (drawn %4.1f) | keys: %s | arrows X=A Z=B C=Sel Space=Start%s "
                   "P=pause S=save screen Esc=menu %s",
-                  gameboy.cartridge().header().title.c_str(),
-                  gameboy.cartridge().header().typeName().c_str(), gameboy.cgbMode() ? " CGB" : " DMG",
-                  emuFps, drawFps, input.description().c_str(), paused ? " ** PAUSED **" : "");
+                  machine.title().c_str(), gb::systemTag(machine.system()), machine.hardware().c_str(), emuFps,
+                  drawFps, input.description().c_str(),
+                  machine.system() == gb::System::GameBoyAdvance ? " A=L D=R" : "", paused ? " ** PAUSED **" : "");
     return buf;
 }
 
@@ -66,21 +61,24 @@ std::string screenshotPath(const std::string& romPath) {
 EmulatorSession::EmulatorSession(Terminal& terminal, Keyboard& keyboard, const Options& options)
     : terminal_(terminal), keyboard_(keyboard), options_(options) {}
 
-const ColorMapper& EmulatorSession::mapperFor(bool cgbGame) {
-    // DMG games already use a hand-picked palette, so no LCD correction.
-    std::unique_ptr<ColorMapper>& slot = cgbGame ? cgbColors_ : dmgColors_;
-    if (!slot) slot.reset(new ColorMapper(cgbGame && options_.colorCorrection));
+const ColorMapper& EmulatorSession::mapperFor(const gb::Machine& machine) {
+    // The LCD correction curve is for the Game Boy Color screen.  Original
+    // Game Boy games use a hand-picked palette and GBA colors are shown as is.
+    bool correct = options_.colorCorrection && machine.colorScreen() &&
+                   machine.system() != gb::System::GameBoyAdvance;
+    std::unique_ptr<ColorMapper>& slot = correct ? correctedColors_ : plainColors_;
+    if (!slot) slot.reset(new ColorMapper(correct));
     return *slot;
 }
 
 void EmulatorSession::run(const std::string& romPath) {
-    std::unique_ptr<gb::GameBoy> gameboy = loadGame(romPath);
+    std::unique_ptr<gb::Machine> gameboy = emu::createMachine(romPath);
     const std::string savePath = util::RomLoader::savePathFor(romPath);
 
     TerminalRenderer renderer(terminal_,
                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256,
                               options_.maxScale);
-    renderer.setColorMapper(&mapperFor(gameboy->cgbMode()));
+    renderer.setColorMapper(&mapperFor(*gameboy));
     // The OS keyboard state is only meaningful when we run on the machine
     // whose keyboard is being used (not over SSH).
     std::unique_ptr<NativeKeyboard> native;
@@ -121,7 +119,7 @@ void EmulatorSession::run(const std::string& romPath) {
         }
         if (input.consumeScreenshotRequest()) {
             std::string path = screenshotPath(romPath);
-            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(gameboy->cgbMode()), colorMode);
+            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(*gameboy), colorMode);
             flash = ok ? " Screen saved to " + path + "  (view it with: cat \"" + path + "\")"
                        : " Could not write " + path;
             flashUntil = now + std::chrono::seconds(3);
@@ -158,7 +156,7 @@ void EmulatorSession::run(const std::string& romPath) {
             refreshStatus(now);
         }
         if (now - lastSave > std::chrono::seconds(30)) {
-            gameboy->cartridge().writeSave(savePath);
+            gameboy->writeSave(savePath);
             lastSave = now;
         }
 
@@ -180,7 +178,7 @@ void EmulatorSession::run(const std::string& romPath) {
         }
     }
 
-    gameboy->cartridge().writeSave(savePath);
+    gameboy->writeSave(savePath);
 }
 
 // ------------------------------------------------------------ headless ----
@@ -224,10 +222,9 @@ std::vector<ScriptedPress> parseScript(const std::string& script) {
 }  // namespace
 
 int HeadlessRunner::run() {
-    std::unique_ptr<gb::GameBoy> gameboy = loadGame(options_.path);
-    const gb::CartridgeHeader& h = gameboy->cartridge().header();
-    std::printf("title: %s  mapper: %s  mode: %s\n", h.title.c_str(), h.typeName().c_str(),
-                gameboy->cgbMode() ? "CGB" : "DMG");
+    std::unique_ptr<gb::Machine> gameboy = emu::createMachine(options_.path);
+    std::printf("title: %s  system: %s  hardware: %s\n", gameboy->title().c_str(),
+                gb::systemName(gameboy->system()), gameboy->hardware().c_str());
 
     std::vector<ScriptedPress> script = parseScript(options_.inputScript);
     Clock::time_point start = Clock::now();
@@ -249,7 +246,8 @@ int HeadlessRunner::run() {
         bool asText = util::endsWith(util::toLower(options_.screenshot), ".txt");
         bool ok;
         if (asText) {
-            ColorMapper colors(gameboy->cgbMode() && options_.colorCorrection);
+            ColorMapper colors(options_.colorCorrection && gameboy->colorScreen() &&
+                               gameboy->system() != gb::System::GameBoyAdvance);
             ok = AnsiArt::save(options_.screenshot, gameboy->frame(), colors,
                                options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256);
         } else {

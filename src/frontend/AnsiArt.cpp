@@ -70,11 +70,37 @@ void appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode
 
 }  // namespace
 
-std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode) {
+std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode,
+                            RenderStyle style) {
     std::string out;
     // A busy frame can need hundreds of KB (up to ~40 bytes per cell in
     // truecolor); reserve a good chunk up front to avoid reallocations.
     out.reserve(256 * 1024);
+    if (style != RenderStyle::Blocks) {
+        // ASCII styles: one character per 1x2 pixels, never a background.
+        const bool colored = style == RenderStyle::AsciiColor;
+        for (int y = 0; y + 1 < frame.height(); y += 2) {
+            const std::uint16_t* top = frame.row(y);
+            const std::uint16_t* bottom = frame.row(y + 1);
+            bool haveFg = false;
+            std::uint32_t curFg = 0;
+            for (int x = 0; x < frame.width(); ++x) {
+                AsciiCell c = AsciiShader::shade(top[x], bottom[x], colors);
+                if (colored && c.glyph != ' ') {
+                    std::uint32_t fg = colorKey(c.color, colors, mode);
+                    if (!haveFg || curFg != fg) {
+                        appendColor(out, fg, true, mode);
+                        curFg = fg;
+                        haveFg = true;
+                    }
+                }
+                out += c.glyph;
+            }
+            // Plain ASCII files contain no escape codes at all.
+            out += colored ? "\x1b[0m\n" : "\n";
+        }
+        return out;
+    }
     // One text line per pair of pixel rows (y = top, y + 1 = bottom).
     for (int y = 0; y + 1 < frame.height(); y += 2) {
         const std::uint16_t* top = frame.row(y);
@@ -110,11 +136,11 @@ std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& col
 }
 
 bool AnsiArt::save(const std::string& path, const gb::FrameBuffer& frame, const ColorMapper& colors,
-                   ColorMode mode) {
+                   ColorMode mode, RenderStyle style) {
     // Binary mode: write the bytes exactly as encoded (no newline conversion).
     std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
     if (!file) return false;
-    std::string text = encode(frame, colors, mode);
+    std::string text = encode(frame, colors, mode, style);
     file.write(text.data(), static_cast<std::streamsize>(text.size()));
     // The stream's state tells whether every byte was written.
     return static_cast<bool>(file);

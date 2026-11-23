@@ -140,7 +140,7 @@ void EmulatorSession::run(const std::string& romPath) {
 
     TerminalRenderer renderer(terminal_,
                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256,
-                              options_.maxScale);
+                              options_.maxScale, options_.style);
     renderer.setColorMapper(&mapperFor(*gameboy));
     // The OS keyboard state is only meaningful when we run on the machine
     // whose keyboard is being used (not over SSH).
@@ -191,7 +191,7 @@ void EmulatorSession::run(const std::string& romPath) {
         if (input.consumeScreenshotRequest()) {
             // Save the current frame as escaped text and say so for 3 s.
             std::string path = screenshotPath(romPath);
-            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(*gameboy), colorMode);
+            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(*gameboy), colorMode, options_.style);
             flash = ok ? " Screen saved to " + path + "  (view it with: cat \"" + path + "\")"
                        : " Could not write " + path;
             flashUntil = now + std::chrono::seconds(3);
@@ -349,7 +349,7 @@ int HeadlessRunner::run() {
             ColorMapper colors(options_.colorCorrection && gameboy->colorScreen() &&
                                gameboy->system() != gb::System::GameBoyAdvance);
             ok = AnsiArt::save(options_.screenshot, gameboy->frame(), colors,
-                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256);
+                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256, options_.style);
         } else {
             ok = util::PngWriter::write(options_.screenshot, gameboy->frame());
         }

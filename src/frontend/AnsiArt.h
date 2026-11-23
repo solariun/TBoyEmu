@@ -55,11 +55,15 @@ class AnsiArt {
 public:
     // Returns the escaped text for `frame` (UTF-8, lines ending in "\n").
     // colors converts the RGB555 pixels; mode picks palette or 24-bit codes.
-    static std::string encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode);
+    // style: Blocks = half blocks with both colors (default); Ascii = plain
+    // ASCII art with no escape codes at all; AsciiColor = ASCII characters
+    // with a foreground color each (AsciiShader.h).
+    static std::string encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode,
+                              RenderStyle style = RenderStyle::Blocks);
     // encode() + write to `path` (overwritten if it exists).
     // Returns false if the file cannot be opened or written.
     static bool save(const std::string& path, const gb::FrameBuffer& frame, const ColorMapper& colors,
-                     ColorMode mode);
+                     ColorMode mode, RenderStyle style = RenderStyle::Blocks);
 };
 
 }  // namespace term

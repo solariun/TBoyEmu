@@ -57,6 +57,7 @@
 #include <vector>
 
 #include "../core/FrameBuffer.h"
+#include "AsciiShader.h"
 #include "ColorMapper.h"
 #include "Terminal.h"
 
@@ -80,7 +81,10 @@ class TerminalRenderer {
 public:
     // maxScale: upper limit of the scale factor (1.0 = native size at most;
     // values <= 0 are treated as 1.0). Computes the layout immediately.
-    TerminalRenderer(Terminal& terminal, ColorMode mode, double maxScale);
+    // style: half blocks (default) or one of the ASCII styles (AsciiShader.h);
+    // the layout is the same for all styles (one cell = 1x2 source pixels).
+    TerminalRenderer(Terminal& terminal, ColorMode mode, double maxScale,
+                     RenderStyle style = RenderStyle::Blocks);
 
     // Selects the color conversion table (not owned; must outlive the
     // renderer). Forces a full redraw. present() draws nothing until set.
@@ -106,9 +110,12 @@ private:
     void appendColor(std::string& out, std::uint32_t key, bool foreground) const;
     // Appends the status bar to `out` when it changed and a row is free.
     void drawStatus(std::string& out, const std::string& status);
+    // Draws the changed cells for the ASCII styles into out_.
+    void presentAscii(const gb::FrameBuffer& frame);
 
     Terminal& terminal_;          // output target
     ColorMode mode_;              // palette index or truecolor
+    RenderStyle style_;           // half blocks, plain ASCII or colored ASCII
     double maxScale_;             // from --scale, > 0
     const ColorMapper* mapper_;   // not owned; null until setColorMapper()
 

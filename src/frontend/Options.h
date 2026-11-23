@@ -40,6 +40,8 @@
 
 #include <string>
 
+#include "AsciiShader.h"
+
 namespace term {
 
 // Command line configuration.
@@ -49,6 +51,7 @@ struct Options {
         : trueColor(false),
           colorCorrection(true),
           maxScale(1.0),
+          style(RenderStyle::Blocks),
           kittyKeyboard(true),
           nativeKeyboard(true),
           holdMs(0),
@@ -61,6 +64,7 @@ struct Options {
     bool trueColor;        // --truecolor: 24-bit colors instead of xterm-256
     bool colorCorrection;  // false with --no-color-correction (raw CGB colors)
     double maxScale;       // --scale N: maximum scale factor, > 0 (default 1)
+    RenderStyle style;     // --ascii / --ascii-color (default: colored half blocks)
     bool kittyKeyboard;    // false with --no-kitty
     bool nativeKeyboard;  // read key state from the OS (macOS / Linux)
                           // (false with --no-native)

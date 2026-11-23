@@ -41,6 +41,10 @@ std::string Options::parse(int argc, char** argv) {
         bool hasValue = i + 1 < argc;
         if (a == "-h" || a == "--help") {
             help = true;
+        } else if (a == "--ascii") {
+            style = RenderStyle::Ascii;
+        } else if (a == "--ascii-color") {
+            style = RenderStyle::AsciiColor;
         } else if (a == "--truecolor") {
             trueColor = true;
         } else if (a == "--no-color-correction") {
@@ -93,6 +97,9 @@ std::string Options::usage(const char* program) {
            "           P = pause   S = save screen to <rom>-<date>.txt   Esc = back / quit\n"
            "\n"
            "options:\n"
+           "  --ascii                 draw with plain ASCII characters (no colors, no background)\n"
+           "  --ascii-color           ASCII characters in the game's colors (no background)\n"
+           "                          default: colored half blocks (foreground + background)\n"
            "  --truecolor             24-bit color instead of the xterm 256 palette\n"
            "  --no-color-correction   raw CGB colors (more saturated)\n"
            "  --scale N               maximum scale (1 = 160x72 cells, default 1)\n"

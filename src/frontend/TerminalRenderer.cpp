@@ -88,9 +88,10 @@ void moveTo(std::string& out, int row, int col) {
 
 }  // namespace
 
-TerminalRenderer::TerminalRenderer(Terminal& terminal, ColorMode mode, double maxScale)
+TerminalRenderer::TerminalRenderer(Terminal& terminal, ColorMode mode, double maxScale, RenderStyle style)
     : terminal_(terminal),
       mode_(mode),
+      style_(style),
       maxScale_(maxScale > 0 ? maxScale : 1.0),
       mapper_(0),
       cols_(0),
@@ -247,6 +248,15 @@ void TerminalRenderer::present(const gb::FrameBuffer& frame, const std::string& 
     std::uint32_t curFg = 0, curBg = 0;
     int cursorRow = -1, cursorCol = -1;
 
+    if (style_ != RenderStyle::Blocks) {
+        presentAscii(frame);
+        out_ += "\x1b[0m";
+        drawStatus(out_, status);
+        out_ += "\x1b[?2026l";
+        terminal_.write(out_);
+        return;
+    }
+
     for (int y = 0; y < outRows_; ++y) {
         // Source rows for the top and bottom half of this cell row.
         const std::uint16_t* top = frame.row(srcTop_[static_cast<size_t>(y)]);
@@ -314,6 +324,48 @@ void TerminalRenderer::present(const gb::FrameBuffer& frame, const std::string& 
     // One write per frame: fewer syscalls and the terminal gets the whole
     // synchronized block at once.
     terminal_.write(out_);
+}
+
+// ASCII styles (--ascii / --ascii-color): same layout and diff as the half
+// blocks, but each cell becomes one character from AsciiShader.  No
+// background color is ever sent, so the terminal's own background shows.
+// Cell keys in previous_ get bit 62 set so they never equal a half-block key.
+void TerminalRenderer::presentAscii(const gb::FrameBuffer& frame) {
+    const bool colored = style_ == RenderStyle::AsciiColor;
+    out_ += "\x1b[0m";  // start from the terminal's default colors
+    bool haveFg = false;
+    std::uint32_t curFg = 0;
+    int cursorRow = -1, cursorCol = -1;
+
+    for (int y = 0; y < outRows_; ++y) {
+        const std::uint16_t* top = frame.row(srcTop_[static_cast<size_t>(y)]);
+        int bottomRow = srcBottom_[static_cast<size_t>(y)];
+        const std::uint16_t* bottom = bottomRow >= 0 ? frame.row(bottomRow) : top;
+
+        for (int x = 0; x < outCols_; ++x) {
+            int sx = srcX_[static_cast<size_t>(x)];
+            AsciiCell c = AsciiShader::shade(top[sx], bottom[sx], *mapper_);
+            std::uint32_t fg = colored ? colorKey(c.color) : 0;
+            std::uint64_t cell = (1ull << 62) | (static_cast<std::uint64_t>(fg) << 8) |
+                                 static_cast<unsigned char>(c.glyph);
+            std::uint64_t& prev = previous_[static_cast<size_t>(y * outCols_ + x)];
+            if (prev == cell) continue;
+            prev = cell;
+
+            int row = originY_ + y;
+            int col = originX_ + x;
+            if (row != cursorRow || col != cursorCol) moveTo(out_, row, col);
+            // A space shows nothing, so its color does not matter.
+            if (colored && c.glyph != ' ' && (!haveFg || curFg != fg)) {
+                appendFg(out_, fg);
+                curFg = fg;
+                haveFg = true;
+            }
+            out_.push_back(c.glyph);
+            cursorRow = row;
+            cursorCol = col + 1;
+        }
+    }
 }
 
 }  // namespace term

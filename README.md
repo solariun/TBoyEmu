@@ -32,6 +32,19 @@ background colors), so full size needs **160×72** cells for Game Boy games
 and **240×80** for GBA games (one more row for the status bar). If the terminal is smaller, the picture is scaled down. Pass
 `--scale 2` to let it grow on very large terminals.
 
+## Display styles
+
+| Option          | Look |
+|-----------------|------|
+| *(default)*     | `▀` half blocks with foreground and background colors: 2 pixels per cell, full color |
+| `--ascii`       | plain ASCII art: one character per cell, chosen by brightness (` .:-=+*#%@`), no colors and no background, so your terminal's own colors are used |
+| `--ascii-color` | the same ASCII characters, each in the color of its pixels (foreground only, still no background) |
+
+All three use the same layout (one cell = 1×2 pixels), scaling and frame
+rate. `--truecolor` also applies to `--ascii-color`. The ASCII brightness
+ramp assumes a dark terminal background, so bright areas get the dense
+characters.
+
 ## Controls
 
 | Key            | Button   |
@@ -79,7 +92,8 @@ in Mega Man, Mario, ...), use an `exact` source.
   `--hold-ms` and `--repeat-hold-ms` tune timed mode.
 
 **Screen capture (S):** saves the current frame to
-`<rom name>-YYYYMMDD-HHMMSS.txt` in the current directory. The file holds
+`<rom name>-YYYYMMDD-HHMMSS.txt` in the current directory, in the active
+display style. With `--ascii` it is a plain text file with no escape codes. The file holds
 the escaped terminal content: 72 lines of 160 `▀` cells (80 lines of 240 for
 GBA games) with ANSI color codes (xterm-256, or 24-bit with `--truecolor`). It's always full size,
 whatever the size of your terminal window. View it again with:

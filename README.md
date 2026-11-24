@@ -40,6 +40,10 @@ and **240×80** for GBA games (one more row for the status bar). If the terminal
 | `--ascii`       | plain ASCII art: one character per cell, chosen by brightness (` .:-=+*#%@`), no colors and no background, so your terminal's own colors are used |
 | `--ascii-color` | the same ASCII characters, each in the color of its pixels (foreground only, still no background) |
 
+In the ROM list, **Tab** switches the style for the next game:
+FULL → ASCII-COLOR → ASCII-BW (shown at the top right). The options above
+choose the starting style.
+
 All three use the same layout (one cell = 1×2 pixels), scaling and frame
 rate. `--truecolor` also applies to `--ascii-color`. The ASCII brightness
 ramp assumes a dark terminal background, so bright areas get the dense
@@ -58,6 +62,7 @@ characters.
 | D              | R (GBA)  |
 | P              | Pause    |
 | S              | Save the screen as text (see below) |
+| R              | Start / stop recording a movie (see below) |
 | Esc            | Back to the ROM list (Esc again to quit) |
 
 In the ROM browser, type to search, use the arrows/PgUp/PgDn to move, and
@@ -101,6 +106,23 @@ whatever the size of your terminal window. View it again with:
 ```bash
 cat "Tetris DX (World) (SGB Enhanced) (GB Compatible)-20261123-194313.txt"
 ```
+
+**Movies (R):** press R in a game to start recording and R again to stop.
+While it records, a blue `[RECORDING]` tag sits at the bottom of the
+screen. Every emulated frame goes to `<rom name>-YYYYMMDD-HHMMSS-movie.txt`
+in the current directory, as terminal escape sequences in the active
+display style. Only the cells that changed are stored, so a minute of
+ASCII is a few hundred KB, and a minute of full-color GBA can reach tens
+of MB. The movie is always recorded at native size, independent of your
+window. Play it back at the original 59.7 fps with:
+
+```bash
+./tboyemu --play "Tetris DX (World) (SGB Enhanced) (GB Compatible)-20261124-115153-movie.txt"
+```
+
+`cat` also works, but shows it as fast as the terminal can draw. Each frame
+is wrapped in a synchronized-update block (`CSI ?2026h … CSI ?2026l`),
+which is how the player finds the frames.
 
 Battery saves go next to the ROM as `<rom>.sav`. They're written on exit and
 every 30 s. Game Boy saves use the VBA/BGB format with the RTC trailer. GBA
@@ -151,7 +173,8 @@ restore), `Keyboard`/`KeyDecoder` (VT and kitty sequences), `NativeKeyboard`
 (the OS key-state interface, with macOS, evdev and X11 backends), `GameInput`
 (keys → buttons), `ColorMapper` (RGB555 → xterm-256 with CGB LCD color
 correction), `TerminalRenderer` (half-block, diffed, synchronized output),
-`AnsiArt` (frame → escaped `.txt`), `RomBrowser` and `EmulatorSession`, which runs the frame-paced loop and skips
+`AnsiArt` (frame → escaped `.txt`), `AsciiShader` (ASCII styles),
+`Recorder` (movies and `--play`), `RomBrowser` and `EmulatorSession`, which runs the frame-paced loop and skips
 drawing rather than slowing down. `src/util` has the zip/ROM loader and a
 PNG writer.
 

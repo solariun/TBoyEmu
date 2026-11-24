@@ -69,6 +69,8 @@ std::string Options::parse(int argc, char** argv) {
             frames = std::atoi(argv[++i]);
         } else if (a == "--screenshot" && hasValue) {
             screenshot = argv[++i];
+        } else if (a == "--play" && hasValue) {
+            playPath = argv[++i];
         } else if (a == "--input" && hasValue) {
             inputScript = argv[++i];
         } else if (!a.empty() && a[0] == '-') {
@@ -95,6 +97,8 @@ std::string Options::usage(const char* program) {
            "controls:  arrows = D-pad   X = A   Z = B   C = Select   Space/Enter = Start\n"
            "           A = L   D = R (Game Boy Advance)\n"
            "           P = pause   S = save screen to <rom>-<date>.txt   Esc = back / quit\n"
+           "           R = start / stop recording a movie to <rom>-<date>-movie.txt\n"
+           "           Tab (in the ROM list) = display style: FULL / ASCII-COLOR / ASCII-BW\n"
            "\n"
            "options:\n"
            "  --ascii                 draw with plain ASCII characters (no colors, no background)\n"
@@ -109,6 +113,9 @@ std::string Options::usage(const char* program) {
            "                          (default: the keyboard repeat delay + 80 ms)\n"
            "  --repeat-hold-ms N      timed keys: hold time per auto-repeat\n"
            "                          (default: twice the repeat interval + 40 ms)\n"
+           "\n"
+           "movies:\n"
+           "  --play FILE             play a recorded movie at 59.7 fps (Esc or q stops)\n"
            "\n"
            "headless (testing):\n"
            "  --headless --frames N [--screenshot out.png|out.txt] [--input 60:start:5,120:a:5]\n";

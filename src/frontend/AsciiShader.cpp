@@ -44,6 +44,22 @@ const char kRamp[] = " .:-=+*#%@";
 
 const char* AsciiShader::ramp() { return kRamp; }
 
+const char* renderStyleName(RenderStyle style) {
+    switch (style) {
+        case RenderStyle::Ascii: return "ASCII-BW";
+        case RenderStyle::AsciiColor: return "ASCII-COLOR";
+        default: return "FULL";
+    }
+}
+
+RenderStyle nextRenderStyle(RenderStyle style) {
+    switch (style) {
+        case RenderStyle::Blocks: return RenderStyle::AsciiColor;
+        case RenderStyle::AsciiColor: return RenderStyle::Ascii;
+        default: return RenderStyle::Blocks;
+    }
+}
+
 AsciiCell AsciiShader::shade(std::uint16_t top, std::uint16_t bottom, const ColorMapper& colors) {
     // Average the two pixels per RGB555 channel (rounding up).
     int r = ((top & 31) + (bottom & 31) + 1) >> 1;

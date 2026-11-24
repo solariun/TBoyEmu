@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "../core/Machine.h"
+#include "AsciiShader.h"
 #include "Keyboard.h"
 #include "Terminal.h"
 
@@ -70,7 +71,9 @@ public:
     // message: shown in the bottom line (e.g. a load error from the previous
     // game) until the next key press, which clears it.
     // Quitting = Esc with an empty search, Ctrl+C, or a termination signal.
-    bool choose(std::string& path, std::string& message);
+    // style: the display style games will start in; Tab cycles it
+    // (FULL -> ASCII-COLOR -> ASCII-BW) and the change is written back here.
+    bool choose(std::string& path, std::string& message, RenderStyle& style);
 
 private:
     // One ROM file in the list.
@@ -89,7 +92,7 @@ private:
     // system tag prefix such as "gb", "gbc", "gba").
     void applyFilter();
     // Redraws the whole screen: header with counts, search box, list, help.
-    void draw(const std::string& message);
+    void draw(const std::string& message, RenderStyle style);
     // Shows "Reading ROM headers ... done/total" during the constructor.
     void drawProgress(size_t done, size_t total);
 

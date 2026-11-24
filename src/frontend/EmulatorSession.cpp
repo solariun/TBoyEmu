@@ -66,6 +66,7 @@
 #include "../util/RomLoader.h"
 #include "AnsiArt.h"
 #include "GameInput.h"
+#include "Recorder.h"
 #include "TerminalRenderer.h"
 
 namespace term {
@@ -102,15 +103,15 @@ std::string formatStatus(const gb::Machine& machine, double emuFps, double drawF
 // overwriting an existing file.
 // The ROM's directory and extension are stripped; if the name is taken
 // (two captures in the same second), "-2", "-3", ... is appended.
-std::string screenshotPath(const std::string& romPath) {
+std::string screenshotPath(const std::string& romPath, const std::string& suffix = "") {
     std::string base = romPath.substr(romPath.find_last_of('/') == std::string::npos ? 0 : romPath.find_last_of('/') + 1);
     base = base.substr(0, base.find_last_of('.'));
     char stamp[32];
     std::time_t now = std::time(0);
     std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", std::localtime(&now));
-    std::string path = base + "-" + stamp + ".txt";
+    std::string path = base + "-" + stamp + suffix + ".txt";
     for (int n = 2; std::ifstream(path.c_str()).good(); ++n) {
-        path = base + "-" + stamp + "-" + std::to_string(n) + ".txt";
+        path = base + "-" + stamp + "-" + std::to_string(n) + suffix + ".txt";
     }
     return path;
 }
@@ -142,6 +143,7 @@ void EmulatorSession::run(const std::string& romPath) {
                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256,
                               options_.maxScale, options_.style);
     renderer.setColorMapper(&mapperFor(*gameboy));
+    Recorder recorder;  // R key: movie recording (see Recorder.h)
     // The OS keyboard state is only meaningful when we run on the machine
     // whose keyboard is being used (not over SSH).
     // It is also unnecessary when the kitty protocol already gives exact
@@ -188,6 +190,26 @@ void EmulatorSession::run(const std::string& romPath) {
             paused = !paused;
             refreshStatus(now);
         }
+        if (input.consumeRecordToggle()) {
+            // R: start or stop recording every frame into a .txt movie.
+            if (!recorder.active()) {
+                std::string path = screenshotPath(romPath, "-movie");
+                if (recorder.start(path, colorMode, options_.style, &mapperFor(*gameboy))) {
+                    flash = " Recording to " + path + "  (R stops)";
+                } else {
+                    flash = " Could not create " + path;
+                }
+            } else {
+                recorder.stop();
+                char seconds[32];
+                std::snprintf(seconds, sizeof(seconds), "%.1f", recorder.frames() / 59.7275);
+                flash = " Movie saved to " + recorder.path() + " (" + seconds + " s)  play it with: ./tboyemu --play \"" +
+                        recorder.path() + "\"";
+            }
+            flashUntil = now + std::chrono::seconds(4);
+            renderer.setIndicator(recorder.active() ? "[RECORDING]" : "");
+            refreshStatus(now);
+        }
         if (input.consumeScreenshotRequest()) {
             // Save the current frame as escaped text and say so for 3 s.
             std::string path = screenshotPath(romPath);
@@ -206,6 +228,7 @@ void EmulatorSession::run(const std::string& romPath) {
         if (!paused) {
             gameboy->runFrame();
             ++emulatedCount;
+            if (recorder.active()) recorder.addFrame(gameboy->frame());  // every emulated frame
         }
 
         // ---- draw, unless we are running late ----
@@ -264,7 +287,9 @@ void EmulatorSession::run(const std::string& romPath) {
         }
     }
 
-    // Leaving the game (Esc or signal): final battery save.
+    // Leaving the game (Esc or signal): finish a running movie and do the
+    // final battery save.
+    recorder.stop();
     gameboy->writeSave(savePath);
 }
 

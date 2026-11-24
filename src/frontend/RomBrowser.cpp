@@ -157,7 +157,7 @@ void RomBrowser::applyFilter() {
     if (selected_ >= visible_.size()) selected_ = visible_.empty() ? 0 : visible_.size() - 1;
 }
 
-void RomBrowser::draw(const std::string& message) {
+void RomBrowser::draw(const std::string& message, RenderStyle style) {
     Size s = terminal_.size();
     // Rows available for the list: total minus header (2), gap (1), and the
     // bottom help line, keeping one row spare.
@@ -179,6 +179,10 @@ void RomBrowser::draw(const std::string& message) {
     }
     // Row 2: search box with a fake cursor ("_" in gray).
     out += "\x1b[2;1H\x1b[38;5;250m Search: \x1b[0m" + filter_ + "\x1b[38;5;244m_\x1b[0m";
+    // Display style for the next game, top right; Tab changes it.
+    std::string display = std::string(" Display: ") + renderStyleName(style) + "  (Tab) ";
+    int displayCol = std::max(1, s.cols - static_cast<int>(display.size()) + 1);
+    out += "\x1b[2;" + std::to_string(displayCol) + "H\x1b[1;38;5;231;48;5;25m" + display + "\x1b[0m";
 
     // Rows 4..: the visible part of the list.
     for (int r = 0; r < listRows; ++r) {
@@ -209,21 +213,22 @@ void RomBrowser::draw(const std::string& message) {
     if (!message.empty()) {
         out += "\x1b[38;5;203m" + message.substr(0, static_cast<size_t>(s.cols));
     } else {
-        out += " Up/Down/PgUp/PgDn: move   Enter: play   type: search (name or gb/gbc/gba)   Esc: quit";
+        out += " Up/Down/PgUp/PgDn: move   Enter: play   Tab: display style   type: search (name or gb/gbc/gba)"
+               "   Esc: quit";
     }
     // Reset and end the synchronized update: the terminal shows it all at once.
     out += "\x1b[0m\x1b[?2026l";
     terminal_.write(out);
 }
 
-bool RomBrowser::choose(std::string& path, std::string& message) {
+bool RomBrowser::choose(std::string& path, std::string& message, RenderStyle& style) {
     std::vector<KeyEvent> events;
     bool dirty = true;  // screen needs a redraw
     for (;;) {
         if (Terminal::terminateRequested()) return false;
         if (Terminal::consumeResize()) dirty = true;
         if (dirty) {
-            draw(message);
+            draw(message, style);
             dirty = false;
         }
         // Wait up to 200 ms for keys, so resizes and signals are noticed
@@ -262,6 +267,7 @@ bool RomBrowser::choose(std::string& path, std::string& message) {
                     applyFilter();
                     break;
                 case Key::CtrlC: return false;
+                case Key::Tab: style = nextRenderStyle(style); break;
                 // Search box editing (ASCII only, at most 40 characters).
                 case Key::Backspace:
                     if (!filter_.empty()) {

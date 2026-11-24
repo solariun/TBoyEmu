@@ -78,6 +78,8 @@ struct Options {
     int frames;               // --frames N: number of frames to run (default 600)
     std::string screenshot;   // --screenshot FILE: .png, or .txt for ANSI art
     std::string inputScript;  // "frame:button:length,..."
+
+    std::string playPath;  // --play FILE: play a recorded movie instead of a game
                               // (--input; e.g. "300:start:5")
 
     bool help;  // -h / --help

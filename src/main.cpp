@@ -52,6 +52,7 @@
 #include "frontend/EmulatorSession.h"
 #include "frontend/Keyboard.h"
 #include "frontend/Options.h"
+#include "frontend/Recorder.h"
 #include "frontend/RomBrowser.h"
 #include "frontend/Terminal.h"
 
@@ -70,7 +71,7 @@ const char kRomDirectory[] = "roms";
 // Interactive (terminal) mode. Creates the terminal in raw mode, the keyboard reader and
 // the session, then either plays the single ROM given or loops on the ROM browser until
 // the user quits (or a termination signal is received). Returns the process exit code.
-int runInteractive(const term::Options& options) {
+int runInteractive(term::Options& options) {
     term::Terminal terminal(options.kittyKeyboard);
     term::Keyboard keyboard(terminal);
     term::EmulatorSession session(terminal, keyboard, options);
@@ -86,7 +87,7 @@ int runInteractive(const term::Options& options) {
     term::RomBrowser browser(terminal, keyboard, options.path);
     std::string message = browser.empty() ? "No ROMs found in " + options.path : std::string();
     std::string rom;
-    while (!term::Terminal::terminateRequested() && browser.choose(rom, message)) {
+    while (!term::Terminal::terminateRequested() && browser.choose(rom, message, options.style)) {
         try {
             session.run(rom);
         } catch (const std::exception& e) {
@@ -113,6 +114,16 @@ int main(int argc, char** argv) {
         return 0;
     }
     // No path argument: browse ./roms, which must exist.
+    // --play: show a recorded movie (R key in a game) and exit; no roms/ needed.
+    if (!options.playPath.empty()) {
+        try {
+            return term::MoviePlayer::play(options.playPath, options.kittyKeyboard);
+        } catch (const std::exception& e) {
+            std::cerr << "error: " << e.what() << "\n";
+            return 1;
+        }
+    }
+
     if (options.path.empty()) {
         options.path = kRomDirectory;
         if (!isDirectory(options.path)) {

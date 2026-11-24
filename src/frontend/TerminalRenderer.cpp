@@ -203,17 +203,43 @@ void TerminalRenderer::appendFg(std::string& out, std::uint32_t key) const { app
 void TerminalRenderer::appendBg(std::string& out, std::uint32_t key) const { appendColor(out, key, false); }
 
 void TerminalRenderer::drawStatus(std::string& out, const std::string& status) {
+    // Indicator style: bold white on blue (xterm-256 color 21).
+    static const char kIndicatorStyle[] = "\x1b[1;38;5;231;48;5;21m";
+
+    if (!hasStatusRow_) {
+        // No spare row: draw the indicator over the picture's bottom-left
+        // cells, every frame (the picture may have just redrawn them), and
+        // invalidate those cells so they are repainted once it disappears.
+        if (indicator_.empty()) return;
+        moveTo(out, rows_, 1);
+        out += kIndicatorStyle + indicator_ + "\x1b[0m";
+        int row = rows_ - originY_;  // picture row under the terminal's last row
+        if (row >= 0 && row < outRows_) {
+            for (int x = 0; x < outCols_; ++x) {
+                if (originX_ + x > static_cast<int>(indicator_.size())) break;
+                previous_[static_cast<size_t>(row * outCols_ + x)] = kInvalid;
+            }
+        }
+        return;
+    }
+
     // Only redraw when the text changed (it changes about once per second).
-    if (!hasStatusRow_ || status == lastStatus_) return;
-    lastStatus_ = status;
-    // Truncate to the terminal width. This counts bytes, not characters,
-    // which is exact for ASCII text (a non-ASCII file name in a flash message
-    // could be cut in the middle of a UTF-8 character).
-    std::string line = status.substr(0, static_cast<size_t>(cols_));
+    std::string key = indicator_ + '\x02' + status;
+    if (key == lastStatus_) return;
+    lastStatus_ = key;
     moveTo(out, rows_, 1);
-    // Reset, erase the whole line (CSI 2 K), switch to reverse video (CSI 7 m).
-    out += "\x1b[0m\x1b[2K\x1b[7m";
-    out += line;
+    // Reset and erase the whole line (CSI 2 K).
+    out += "\x1b[0m\x1b[2K";
+    size_t room = static_cast<size_t>(cols_);
+    if (!indicator_.empty()) {
+        out += kIndicatorStyle + indicator_ + "\x1b[0m ";
+        room = room > indicator_.size() + 1 ? room - indicator_.size() - 1 : 0;
+    }
+    // Truncate to the space left. This counts bytes, not characters, which
+    // is exact for ASCII text (a non-ASCII file name in a flash message could
+    // be cut in the middle of a UTF-8 character). Reverse video = CSI 7 m.
+    out += "\x1b[7m";
+    out += status.substr(0, room);
     out += "\x1b[0m";
 }
 

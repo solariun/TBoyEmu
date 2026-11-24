@@ -64,6 +64,15 @@ public:
     // Returns false if the file cannot be opened or written.
     static bool save(const std::string& path, const gb::FrameBuffer& frame, const ColorMapper& colors,
                      ColorMode mode, RenderStyle style = RenderStyle::Blocks);
+
+    // Building blocks shared with Recorder (movie files):
+    // colorKey() packs a color so equal colors compare equal in either mode
+    // (TrueColor: 0x00RRGGBB, Xterm256: palette index 16-255);
+    // appendColor() appends its SGR sequence ("CSI 38;..m" foreground or
+    // "CSI 48;..m" background); upperHalf() is the UTF-8 "upper half block".
+    static std::uint32_t colorKey(std::uint16_t c, const ColorMapper& colors, ColorMode mode);
+    static void appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode mode);
+    static const char* upperHalf();
 };
 
 }  // namespace term

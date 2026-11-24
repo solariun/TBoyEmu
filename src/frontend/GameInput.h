@@ -72,6 +72,7 @@ namespace term {
 //   Arrows = D-pad   X = A   Z = B   C = Select   Space/Enter = Start
 //   A = L   D = R (Game Boy Advance shoulder buttons)
 //   Esc = leave the game   P = pause   S = save the screen as a .txt file
+//   R = start / stop recording a .txt movie
 //
 // Key state comes from the best available source:
 //   Kitty   the terminal reports presses *and* releases (exact)
@@ -118,6 +119,7 @@ public:
     // True once per P press (the flag is cleared by the call).
     bool consumePauseToggle();
     bool consumeScreenshotRequest();  // S key
+    bool consumeRecordToggle();       // R key: start / stop recording a movie
                                       // (true once per press; cleared by the call)
 
     Mode mode() const { return mode_; }
@@ -176,6 +178,7 @@ private:
     bool exit_;
     bool pauseToggle_;
     bool screenshot_;
+    bool recordToggle_;
     std::string notice_;  // see notice()
 };
 

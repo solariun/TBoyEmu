@@ -99,6 +99,10 @@ public:
     // the status text in reverse video on the last line. If the frame size
     // differs from the previous one (GB vs GBA), the layout is recomputed.
     void present(const gb::FrameBuffer& frame, const std::string& status);
+    // Short tag shown in blue at the bottom left (e.g. "[RECORDING]"), in
+    // front of the status text; empty = none.  When the terminal has no spare
+    // status row it is drawn over the picture's last row instead.
+    void setIndicator(const std::string& text) { indicator_ = text; }
 
 private:
     // Packs a pixel's terminal color into 32 bits so that equal colors compare
@@ -133,7 +137,8 @@ private:
     // Layout: fg key << 32 | bg key, plus bit 31 when the cell has no bottom
     // pixel; ~0 (kInvalid in the .cpp) means "unknown, must redraw".
     std::vector<std::uint64_t> previous_;  // last drawn cell (fg/bg keys)
-    std::string lastStatus_;  // status text currently on screen ("" = redraw)
+    std::string lastStatus_;
+    std::string indicator_;  // see setIndicator()  // status text currently on screen ("" = redraw)
     std::string out_;         // output buffer reused across frames (1 MB reserved)
 };
 

@@ -44,9 +44,13 @@ namespace {
 
 const char kUpperHalf[] = "\xE2\x96\x80";  // U+2580
 
+}  // namespace
+
+const char* AnsiArt::upperHalf() { return kUpperHalf; }
+
 // Packs a color so equal colors compare equal in either mode.
 // TrueColor: 0x00RRGGBB; Xterm256: palette index 16-255.
-std::uint32_t colorKey(std::uint16_t c, const ColorMapper& colors, ColorMode mode) {
+std::uint32_t AnsiArt::colorKey(std::uint16_t c, const ColorMapper& colors, ColorMode mode) {
     if (mode == ColorMode::TrueColor) {
         Rgb rgb = colors.rgb(c);
         return (static_cast<std::uint32_t>(rgb.r) << 16) | (static_cast<std::uint32_t>(rgb.g) << 8) | rgb.b;
@@ -57,7 +61,7 @@ std::uint32_t colorKey(std::uint16_t c, const ColorMapper& colors, ColorMode mod
 // Appends the SGR sequence for a color key: "CSI 38;..." for the foreground
 // or "CSI 48;..." for the background, then "2;r;g;b" (truecolor) or "5;n"
 // (palette index), then the final 'm'.
-void appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode mode) {
+void AnsiArt::appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode mode) {
     out += foreground ? "\x1b[38;" : "\x1b[48;";
     if (mode == ColorMode::TrueColor) {
         out += "2;" + std::to_string((key >> 16) & 0xFF) + ";" + std::to_string((key >> 8) & 0xFF) + ";" +
@@ -67,8 +71,6 @@ void appendColor(std::string& out, std::uint32_t key, bool foreground, ColorMode
     }
     out += "m";
 }
-
-}  // namespace
 
 std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& colors, ColorMode mode,
                             RenderStyle style) {

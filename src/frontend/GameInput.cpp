@@ -78,7 +78,8 @@ GameInput::GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native,
       armed_(false),
       exit_(false),
       pauseToggle_(false),
-      screenshot_(false) {
+      screenshot_(false),
+      recordToggle_(false) {
     releaseAll();
     if (mode_ == Mode::Native && native_->permissionMissing()) {
         // Ask right away instead of after a few failed key checks.
@@ -252,6 +253,10 @@ void GameInput::handle(const KeyEvent& e, Clock::time_point now) {
         if (e.action == KeyAction::Press) screenshot_ = true;  // ignore auto-repeat
         return;
     }
+    if (e.key == Key::Char && e.codepoint == 'r') {
+        if (e.action == KeyAction::Press) recordToggle_ = true;  // ignore auto-repeat
+        return;
+    }
     Button button;
     if (!mapKey(e, button)) return;
     const int i = static_cast<int>(button);
@@ -329,6 +334,12 @@ bool GameInput::consumePauseToggle() {
 }  // namespace term
 
 namespace term {
+
+bool GameInput::consumeRecordToggle() {
+    bool r = recordToggle_;
+    recordToggle_ = false;
+    return r;
+}
 
 bool GameInput::consumeScreenshotRequest() {
     bool s = screenshot_;

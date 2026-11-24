@@ -56,6 +56,12 @@ namespace term {
 // How frames are drawn as text (see the file header).
 enum class RenderStyle { Blocks, Ascii, AsciiColor };
 
+// Name shown in the ROM browser: "FULL", "ASCII-COLOR" or "ASCII-BW".
+const char* renderStyleName(RenderStyle style);
+// The style Tab switches to in the ROM browser: FULL -> ASCII-COLOR ->
+// ASCII-BW -> FULL.
+RenderStyle nextRenderStyle(RenderStyle style);
+
 // One terminal cell in the ASCII styles.
 struct AsciiCell {
     char glyph;           // character from the brightness ramp

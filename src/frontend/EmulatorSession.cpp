@@ -140,7 +140,7 @@ void EmulatorSession::run(const std::string& romPath) {
     const std::string savePath = util::RomLoader::savePathFor(romPath);
 
     TerminalRenderer renderer(terminal_,
-                              options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256,
+                              options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256,
                               options_.maxScale, options_.style);
     renderer.setColorMapper(&mapperFor(*gameboy));
     Recorder recorder;  // R key: movie recording (see Recorder.h)
@@ -155,7 +155,7 @@ void EmulatorSession::run(const std::string& romPath) {
                     options_.repeatHoldMs);
 
     // Loop state.
-    const ColorMode colorMode = options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256;
+    const gfx::ColorMode colorMode = options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256;
     std::vector<KeyEvent> events;   // reused buffer for Keyboard::poll()
     bool paused = false;
     int framesSinceDraw = 0;        // consecutive skipped frames (max 6)
@@ -374,7 +374,7 @@ int HeadlessRunner::run() {
             ColorMapper colors(options_.colorCorrection && gameboy->colorScreen() &&
                                gameboy->system() != gb::System::GameBoyAdvance);
             ok = AnsiArt::save(options_.screenshot, gameboy->frame(), colors,
-                               options_.trueColor ? ColorMode::TrueColor : ColorMode::Xterm256, options_.style);
+                               options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256, options_.style);
         } else {
             ok = util::PngWriter::write(options_.screenshot, gameboy->frame());
         }

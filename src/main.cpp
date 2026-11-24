@@ -27,8 +27,11 @@
 //               Keypad, Backup (SRAM/Flash/EEPROM), Bios (HLE), Gba
 //    MachineFactory  picks the console from the ROM header
 //    frontend/  Terminal (raw mode), Keyboard, GameInput, TerminalRenderer,
-//               ColorMapper, RomBrowser, EmulatorSession
+//               ColorMapper, AnsiArt, Recorder (movies, --play), RomBrowser,
+//               EmulatorSession
 //    util/      RomLoader (.gb/.gbc/.gba/.zip), PngWriter
+//    ../external/Graphicx  (git submodule) the Graphicx library that draws
+//               pictures as half blocks / ASCII; used by the frontend
 //  main() only wires the frontend objects together: Terminal (raw mode, restored by RAII
 //  when it goes out of scope), Keyboard (reads keys from that terminal), EmulatorSession
 //  (runs a game, using emu::createMachine() from MachineFactory) and RomBrowser.

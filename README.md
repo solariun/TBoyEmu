@@ -6,11 +6,22 @@ audio; it handles video and keyboard input only.
 
 ## Build & run
 
+The terminal graphics come from the [Graphicx](https://github.com/solariun/Graphicx)
+library, included as a git submodule in `external/Graphicx`. Clone with
+`--recursive` so you get it too:
+
 ```bash
+git clone --recursive https://github.com/solariun/TBoyEmu.git
+cd TBoyEmu
 make
 ./tboyemu                     # list every game under roms/
 ./tboyemu "roms/Nintendo - Game Boy Advance/Metroid Fusion (USA).zip"
 ```
+
+If you already cloned without `--recursive`, run
+`git submodule update --init`. `make` tells you when the submodule is
+missing. To pick up a newer Graphicx, run
+`git submodule update --remote external/Graphicx`.
 
 **Games** go in `roms/`, in any subfolders you like. The start screen scans
 all of them and tags each game with its system, read from the ROM header:
@@ -171,12 +182,24 @@ Gba
 `src/frontend` contains the terminal layer: `Terminal` (raw mode, RAII
 restore), `Keyboard`/`KeyDecoder` (VT and kitty sequences), `NativeKeyboard`
 (the OS key-state interface, with macOS, evdev and X11 backends), `GameInput`
-(keys → buttons), `ColorMapper` (RGB555 → xterm-256 with CGB LCD color
-correction), `TerminalRenderer` (half-block, diffed, synchronized output),
-`AnsiArt` (frame → escaped `.txt`), `AsciiShader` (ASCII styles),
-`Recorder` (movies and `--play`), `RomBrowser` and `EmulatorSession`, which runs the frame-paced loop and skips
-drawing rather than slowing down. `src/util` has the zip/ROM loader and a
-PNG writer.
+(keys → buttons), `ColorMapper` (RGB555 frame → `gfx::Image`, with the CGB
+LCD color correction), `TerminalRenderer` (window layout, status bar and
+indicator around a `gfx::Screen`), `AnsiArt` (S captures via
+`gfx::render()`), `Recorder` (movies via a `gfx::Screen`, plus `--play`),
+`RomBrowser` and `EmulatorSession`. `EmulatorSession` runs the frame-paced
+loop and skips drawing rather than slowing down. `src/util` has the zip/ROM
+loader and a PNG writer.
+
+**Graphicx** (`external/Graphicx`, a separate repository) does the actual
+picture drawing:
+- **Styles:** half blocks, colored ASCII and plain ASCII.
+- **Colors:** xterm-256 matching or 24-bit truecolor.
+- **Resizing:** Nearest for pixel art.
+- **Diffing:** frame-to-frame diffs, so only changed cells are sent.
+
+TBoyEmu compiles only its core file (`src/graphicx.cpp`). Changes to how
+pictures are drawn belong in Graphicx, so its tools (`gfx-convert`,
+`gfx-play`) and other users benefit too.
 
 ## Testing
 

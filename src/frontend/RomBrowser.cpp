@@ -49,6 +49,7 @@
 
 #include "../MachineFactory.h"
 #include "../util/RomLoader.h"
+#include "Options.h"
 
 namespace term {
 
@@ -157,7 +158,7 @@ void RomBrowser::applyFilter() {
     if (selected_ >= visible_.size()) selected_ = visible_.empty() ? 0 : visible_.size() - 1;
 }
 
-void RomBrowser::draw(const std::string& message, RenderStyle style) {
+void RomBrowser::draw(const std::string& message, gfx::Style style) {
     Size s = terminal_.size();
     // Rows available for the list: total minus header (2), gap (1), and the
     // bottom help line, keeping one row spare.
@@ -180,7 +181,7 @@ void RomBrowser::draw(const std::string& message, RenderStyle style) {
     // Row 2: search box with a fake cursor ("_" in gray).
     out += "\x1b[2;1H\x1b[38;5;250m Search: \x1b[0m" + filter_ + "\x1b[38;5;244m_\x1b[0m";
     // Display style for the next game, top right; Tab changes it.
-    std::string display = std::string(" Display: ") + renderStyleName(style) + "  (Tab) ";
+    std::string display = std::string(" Display: ") + displayStyleName(style) + "  (Tab) ";
     int displayCol = std::max(1, s.cols - static_cast<int>(display.size()) + 1);
     out += "\x1b[2;" + std::to_string(displayCol) + "H\x1b[1;38;5;231;48;5;25m" + display + "\x1b[0m";
 
@@ -221,7 +222,7 @@ void RomBrowser::draw(const std::string& message, RenderStyle style) {
     terminal_.write(out);
 }
 
-bool RomBrowser::choose(std::string& path, std::string& message, RenderStyle& style) {
+bool RomBrowser::choose(std::string& path, std::string& message, gfx::Style& style) {
     std::vector<KeyEvent> events;
     bool dirty = true;  // screen needs a redraw
     for (;;) {
@@ -267,7 +268,7 @@ bool RomBrowser::choose(std::string& path, std::string& message, RenderStyle& st
                     applyFilter();
                     break;
                 case Key::CtrlC: return false;
-                case Key::Tab: style = nextRenderStyle(style); break;
+                case Key::Tab: style = nextDisplayStyle(style); break;
                 // Search box editing (ASCII only, at most 40 characters).
                 case Key::Backspace:
                     if (!filter_.empty()) {

@@ -42,9 +42,9 @@ std::string Options::parse(int argc, char** argv) {
         if (a == "-h" || a == "--help") {
             help = true;
         } else if (a == "--ascii") {
-            style = RenderStyle::Ascii;
+            style = gfx::Style::Ascii;
         } else if (a == "--ascii-color") {
-            style = RenderStyle::AsciiColor;
+            style = gfx::Style::AsciiColor;
         } else if (a == "--truecolor") {
             trueColor = true;
         } else if (a == "--no-color-correction") {
@@ -119,6 +119,22 @@ std::string Options::usage(const char* program) {
            "\n"
            "headless (testing):\n"
            "  --headless --frames N [--screenshot out.png|out.txt] [--input 60:start:5,120:a:5]\n";
+}
+
+const char* displayStyleName(gfx::Style style) {
+    switch (style) {
+        case gfx::Style::Ascii: return "ASCII-BW";
+        case gfx::Style::AsciiColor: return "ASCII-COLOR";
+        default: return "FULL";
+    }
+}
+
+gfx::Style nextDisplayStyle(gfx::Style style) {
+    switch (style) {
+        case gfx::Style::Blocks: return gfx::Style::AsciiColor;
+        case gfx::Style::AsciiColor: return gfx::Style::Ascii;
+        default: return gfx::Style::Blocks;
+    }
 }
 
 }  // namespace term

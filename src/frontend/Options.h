@@ -40,7 +40,7 @@
 
 #include <string>
 
-#include "AsciiShader.h"
+#include <graphicx/graphicx.h>
 
 namespace term {
 
@@ -51,7 +51,7 @@ struct Options {
         : trueColor(false),
           colorCorrection(true),
           maxScale(1.0),
-          style(RenderStyle::Blocks),
+          style(gfx::Style::Blocks),
           kittyKeyboard(true),
           nativeKeyboard(true),
           holdMs(0),
@@ -64,7 +64,7 @@ struct Options {
     bool trueColor;        // --truecolor: 24-bit colors instead of xterm-256
     bool colorCorrection;  // false with --no-color-correction (raw CGB colors)
     double maxScale;       // --scale N: maximum scale factor, > 0 (default 1)
-    RenderStyle style;     // --ascii / --ascii-color (default: colored half blocks)
+    gfx::Style style;      // --ascii / --ascii-color (default: colored half blocks)
     bool kittyKeyboard;    // false with --no-kitty
     bool nativeKeyboard;  // read key state from the OS (macOS / Linux)
                           // (false with --no-native)
@@ -91,6 +91,13 @@ struct Options {
     // The --help text; `program` is argv[0].
     static std::string usage(const char* program);
 };
+
+// Display style names shown to the player (ROM list): "FULL",
+// "ASCII-COLOR", "ASCII-BW".
+const char* displayStyleName(gfx::Style style);
+// The style Tab switches to in the ROM list: FULL -> ASCII-COLOR ->
+// ASCII-BW -> FULL.
+gfx::Style nextDisplayStyle(gfx::Style style);
 
 }  // namespace term
 

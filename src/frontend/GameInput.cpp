@@ -79,7 +79,9 @@ GameInput::GameInput(bool kittyKeyboard, std::unique_ptr<NativeKeyboard> native,
       exit_(false),
       pauseToggle_(false),
       screenshot_(false),
-      recordToggle_(false) {
+      recordToggle_(false),
+      contrastSteps_(0),
+      brightnessSteps_(0) {
     releaseAll();
     if (mode_ == Mode::Native && native_->permissionMissing()) {
         // Ask right away instead of after a few failed key checks.
@@ -257,6 +259,15 @@ void GameInput::handle(const KeyEvent& e, Clock::time_point now) {
         if (e.action == KeyAction::Press) recordToggle_ = true;  // ignore auto-repeat
         return;
     }
+    if (e.key == Key::Char && (e.codepoint == '[' || e.codepoint == ']' || e.codepoint == '<' || e.codepoint == '>' ||
+                               e.codepoint == ',' || e.codepoint == '.')) {
+        if (e.action == KeyAction::Release) return;  // press and auto-repeat both count
+        if (e.codepoint == '[') --contrastSteps_;
+        if (e.codepoint == ']') ++contrastSteps_;
+        if (e.codepoint == '<' || e.codepoint == ',') --brightnessSteps_;
+        if (e.codepoint == '>' || e.codepoint == '.') ++brightnessSteps_;
+        return;
+    }
     Button button;
     if (!mapKey(e, button)) return;
     const int i = static_cast<int>(button);
@@ -334,6 +345,12 @@ bool GameInput::consumePauseToggle() {
 }  // namespace term
 
 namespace term {
+
+void GameInput::consumeAdjustments(int& contrastSteps, int& brightnessSteps) {
+    contrastSteps = contrastSteps_;
+    brightnessSteps = brightnessSteps_;
+    contrastSteps_ = brightnessSteps_ = 0;
+}
 
 bool GameInput::consumeRecordToggle() {
     bool r = recordToggle_;

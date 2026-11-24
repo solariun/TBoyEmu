@@ -35,21 +35,23 @@
 namespace term {
 
 std::string AnsiArt::encode(const gb::FrameBuffer& frame, const ColorMapper& colors, gfx::ColorMode colorMode,
-                            gfx::Style style) {
+                            gfx::Style style, double contrast, double brightness) {
     gfx::Image image;
     colors.toImage(frame, image);
     gfx::Options options;  // columns = rows = 0: native size, 1x2 pixels per cell
     options.style = style;
     options.colorMode = colorMode;
     options.filter = gfx::Filter::Nearest;
+    options.contrast = contrast;
+    options.brightness = brightness;
     return gfx::render(image, options);
 }
 
 bool AnsiArt::save(const std::string& path, const gb::FrameBuffer& frame, const ColorMapper& colors,
-                   gfx::ColorMode colorMode, gfx::Style style) {
+                   gfx::ColorMode colorMode, gfx::Style style, double contrast, double brightness) {
     std::ofstream file(path.c_str(), std::ios::binary | std::ios::trunc);
     if (!file) return false;
-    std::string text = encode(frame, colors, colorMode, style);
+    std::string text = encode(frame, colors, colorMode, style, contrast, brightness);
     file.write(text.data(), static_cast<std::streamsize>(text.size()));
     // The stream's state tells whether every byte was written.
     return static_cast<bool>(file);

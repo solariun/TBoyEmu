@@ -74,6 +74,8 @@ characters.
 | P              | Pause    |
 | S              | Save the screen as text (see below) |
 | R              | Start / stop recording a movie (see below) |
+| [ / ]          | Contrast −5% / +5% |
+| < / >          | Brightness −5% / +5% (`,` / `.` work too) |
 | Esc            | Back to the ROM list (Esc again to quit) |
 
 In the ROM browser, type to search, use the arrows/PgUp/PgDn to move, and

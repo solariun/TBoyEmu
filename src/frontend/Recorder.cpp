@@ -68,6 +68,14 @@ bool Recorder::start(const std::string& path, gfx::ColorMode colorMode, gfx::Sty
     return true;
 }
 
+void Recorder::setAdjustments(double contrast, double brightness) {
+    gfx::Options options = screen_.options();
+    options.contrast = contrast;
+    options.brightness = brightness;
+    screen_.setOptions(options);  // the next frame is written in full
+    screen_.setOrigin(1, 1);
+}
+
 void Recorder::stop() {
     if (!file_.is_open()) return;
     // Leave the cursor below the picture so a shell prompt after `cat`

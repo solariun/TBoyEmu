@@ -52,6 +52,8 @@ struct Options {
           colorCorrection(true),
           maxScale(1.0),
           style(gfx::Style::Blocks),
+          contrast(0),
+          brightness(0),
           kittyKeyboard(true),
           nativeKeyboard(true),
           holdMs(0),
@@ -65,6 +67,8 @@ struct Options {
     bool colorCorrection;  // false with --no-color-correction (raw CGB colors)
     double maxScale;       // --scale N: maximum scale factor, > 0 (default 1)
     gfx::Style style;      // --ascii / --ascii-color (default: colored half blocks)
+    double contrast;       // --contrast P%: 0.10 = +10%, -0.10 = -10% ([ ] keys)
+    double brightness;     // --brightness P%: 0.10 = +10%, -0.10 = -10% (< > keys)
     bool kittyKeyboard;    // false with --no-kitty
     bool nativeKeyboard;  // read key state from the OS (macOS / Linux)
                           // (false with --no-native)

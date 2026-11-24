@@ -70,6 +70,8 @@ public:
     bool start(const std::string& path, gfx::ColorMode colorMode, gfx::Style style, const ColorMapper* colors);
     // Finishes and closes the file.  Safe to call when not recording.
     void stop();
+    // Picture adjustments for the following frames (0.10 = +10%).
+    void setAdjustments(double contrast, double brightness);
 
     bool active() const { return file_.is_open(); }
     const std::string& path() const { return path_; }

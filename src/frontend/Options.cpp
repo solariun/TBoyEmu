@@ -45,6 +45,10 @@ std::string Options::parse(int argc, char** argv) {
             style = gfx::Style::Ascii;
         } else if (a == "--ascii-color") {
             style = gfx::Style::AsciiColor;
+        } else if (a == "--contrast" && hasValue) {
+            if (!gfx::parsePercent(argv[++i], contrast)) return "--contrast takes a percentage, e.g. 10% or -10%";
+        } else if (a == "--brightness" && hasValue) {
+            if (!gfx::parsePercent(argv[++i], brightness)) return "--brightness takes a percentage, e.g. 10% or -10%";
         } else if (a == "--truecolor") {
             trueColor = true;
         } else if (a == "--no-color-correction") {
@@ -98,12 +102,15 @@ std::string Options::usage(const char* program) {
            "           A = L   D = R (Game Boy Advance)\n"
            "           P = pause   S = save screen to <rom>-<date>.txt   Esc = back / quit\n"
            "           R = start / stop recording a movie to <rom>-<date>-movie.txt\n"
+           "           [ / ] = contrast -5% / +5%   < / > = brightness -5% / +5%\n"
            "           Tab (in the ROM list) = display style: FULL / ASCII-COLOR / ASCII-BW\n"
            "\n"
            "options:\n"
            "  --ascii                 draw with plain ASCII characters (no colors, no background)\n"
            "  --ascii-color           ASCII characters in the game's colors (no background)\n"
            "                          default: colored half blocks (foreground + background)\n"
+           "  --contrast P            contrast change in percent, e.g. 10% or -10% ([ ] keys)\n"
+           "  --brightness P          brightness change in percent, e.g. 10% or -10% (< > keys)\n"
            "  --truecolor             24-bit color instead of the xterm 256 palette\n"
            "  --no-color-correction   raw CGB colors (more saturated)\n"
            "  --scale N               maximum scale (1 = 160x72 cells, default 1)\n"

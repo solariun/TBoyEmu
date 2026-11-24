@@ -73,6 +73,7 @@ namespace term {
 //   A = L   D = R (Game Boy Advance shoulder buttons)
 //   Esc = leave the game   P = pause   S = save the screen as a .txt file
 //   R = start / stop recording a .txt movie
+//   [ / ] = contrast -5% / +5%   < / > = brightness -5% / +5%
 //
 // Key state comes from the best available source:
 //   Kitty   the terminal reports presses *and* releases (exact)
@@ -121,6 +122,10 @@ public:
     bool consumeScreenshotRequest();  // S key
     bool consumeRecordToggle();       // R key: start / stop recording a movie
                                       // (true once per press; cleared by the call)
+    // Picture adjustments since the last call, in 5% steps (negative = less):
+    // [ / ] contrast, < / > brightness (also , / . : in kitty mode a shifted
+    // key arrives as its base key, so < comes as , and > as .).
+    void consumeAdjustments(int& contrastSteps, int& brightnessSteps);
 
     Mode mode() const { return mode_; }
     std::string description() const;  // for the status bar
@@ -179,6 +184,8 @@ private:
     bool pauseToggle_;
     bool screenshot_;
     bool recordToggle_;
+    int contrastSteps_;
+    int brightnessSteps_;
     std::string notice_;  // see notice()
 };
 

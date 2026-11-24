@@ -86,6 +86,10 @@ private:
     Terminal& terminal_;
     Keyboard& keyboard_;
     const Options& options_;
+    // Picture adjustments, changed live with [ ] < > and kept for the next
+    // game (start values: --contrast / --brightness).
+    double contrast_;
+    double brightness_;
     std::unique_ptr<ColorMapper> correctedColors_;  // CGB color correction on
     std::unique_ptr<ColorMapper> plainColors_;      // no correction (GB, GBA,
                                                     // or --no-color-correction)

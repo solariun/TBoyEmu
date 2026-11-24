@@ -104,6 +104,13 @@ void TerminalRenderer::relayout() {
     invalidate();
 }
 
+void TerminalRenderer::setAdjustments(double contrast, double brightness) {
+    options_.contrast = contrast;
+    options_.brightness = brightness;
+    screen_.setOptions(options_);  // new look for every cell: full repaint
+    screen_.setOrigin(originY_, originX_);
+}
+
 void TerminalRenderer::invalidate() {
     screen_.invalidate();
     lastStatus_.clear();

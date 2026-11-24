@@ -51,6 +51,7 @@
 // ============================================================================
 #include "EmulatorSession.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -86,15 +87,31 @@ const Clock::duration kFrameTime = std::chrono::duration_cast<Clock::duration>(
 // emulated fps and drawn fps, the key source (GameInput::description()),
 // the controls, and "** PAUSED **". If GameInput has a notice (OS key
 // access missing) that is shown instead, since it needs the user's action.
+// " contrast +10% brightness -5%" (empty when both are 0).
+std::string adjustmentLabel(double contrast, double brightness) {
+    std::string s;
+    char text[40];
+    if (contrast != 0) {
+        std::snprintf(text, sizeof(text), " contrast %+d%%", static_cast<int>(contrast * 100 + (contrast > 0 ? 0.5 : -0.5)));
+        s += text;
+    }
+    if (brightness != 0) {
+        std::snprintf(text, sizeof(text), " brightness %+d%%",
+                      static_cast<int>(brightness * 100 + (brightness > 0 ? 0.5 : -0.5)));
+        s += text;
+    }
+    return s;
+}
+
 std::string formatStatus(const gb::Machine& machine, double emuFps, double drawFps,
-                         const GameInput& input, bool paused) {
+                         const GameInput& input, bool paused, const std::string& adjustments) {
     if (!input.notice().empty()) return " " + input.notice() + "  (or use a kitty-protocol terminal)";
     char buf[256];
     std::snprintf(buf, sizeof(buf),
-                  " %s [%s %s] | %5.1f fps (drawn %4.1f) | keys: %s | arrows X=A Z=B C=Sel Space=Start%s "
+                  " %s [%s %s] | %5.1f fps (drawn %4.1f)%s | keys: %s | arrows X=A Z=B C=Sel Space=Start%s "
                   "P=pause S=save screen Esc=menu %s",
                   machine.title().c_str(), gb::systemTag(machine.system()), machine.hardware().c_str(), emuFps,
-                  drawFps, input.description().c_str(),
+                  drawFps, adjustments.empty() ? "" : (" |" + adjustments).c_str(), input.description().c_str(),
                   machine.system() == gb::System::GameBoyAdvance ? " A=L D=R" : "", paused ? " ** PAUSED **" : "");
     return buf;
 }
@@ -119,7 +136,8 @@ std::string screenshotPath(const std::string& romPath, const std::string& suffix
 }  // namespace
 
 EmulatorSession::EmulatorSession(Terminal& terminal, Keyboard& keyboard, const Options& options)
-    : terminal_(terminal), keyboard_(keyboard), options_(options) {}
+    : terminal_(terminal), keyboard_(keyboard), options_(options), contrast_(options.contrast),
+      brightness_(options.brightness) {}
 
 const ColorMapper& EmulatorSession::mapperFor(const gb::Machine& machine) {
     // The LCD correction curve is for the Game Boy Color screen.  Original
@@ -143,6 +161,7 @@ void EmulatorSession::run(const std::string& romPath) {
                               options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256,
                               options_.maxScale, options_.style);
     renderer.setColorMapper(&mapperFor(*gameboy));
+    renderer.setAdjustments(contrast_, brightness_);
     Recorder recorder;  // R key: movie recording (see Recorder.h)
     // The OS keyboard state is only meaningful when we run on the machine
     // whose keyboard is being used (not over SSH).
@@ -167,7 +186,9 @@ void EmulatorSession::run(const std::string& romPath) {
     // Recomputes the status text; shows `flash` (e.g. "Screen saved to ...")
     // until flashUntil, then the normal status line again.
     auto refreshStatus = [&](Clock::time_point when) {
-        status = when < flashUntil ? flash : formatStatus(*gameboy, emuFps, drawFps, input, paused);
+        status = when < flashUntil ? flash
+                                   : formatStatus(*gameboy, emuFps, drawFps, input, paused,
+                                                  adjustmentLabel(contrast_, brightness_));
     };
     refreshStatus(Clock::now());
     Clock::time_point statsStart = Clock::now();
@@ -195,6 +216,7 @@ void EmulatorSession::run(const std::string& romPath) {
             if (!recorder.active()) {
                 std::string path = screenshotPath(romPath, "-movie");
                 if (recorder.start(path, colorMode, options_.style, &mapperFor(*gameboy))) {
+                    recorder.setAdjustments(contrast_, brightness_);
                     flash = " Recording to " + path + "  (R stops)";
                 } else {
                     flash = " Could not create " + path;
@@ -210,10 +232,27 @@ void EmulatorSession::run(const std::string& romPath) {
             renderer.setIndicator(recorder.active() ? "[RECORDING]" : "");
             refreshStatus(now);
         }
+        int contrastSteps = 0, brightnessSteps = 0;
+        input.consumeAdjustments(contrastSteps, brightnessSteps);
+        if (contrastSteps != 0 || brightnessSteps != 0) {
+            // [ ] < > : picture adjustments in 5% steps (contrast -100%..+200%,
+            // brightness -100%..+100%), applied to the screen and a running movie.
+            contrast_ = std::max(-1.0, std::min(2.0, contrast_ + 0.05 * contrastSteps));
+            brightness_ = std::max(-1.0, std::min(1.0, brightness_ + 0.05 * brightnessSteps));
+            if (contrast_ > -0.001 && contrast_ < 0.001) contrast_ = 0;
+            if (brightness_ > -0.001 && brightness_ < 0.001) brightness_ = 0;
+            renderer.setAdjustments(contrast_, brightness_);
+            if (recorder.active()) recorder.setAdjustments(contrast_, brightness_);
+            std::string label = adjustmentLabel(contrast_, brightness_);
+            flash = label.empty() ? std::string(" picture: normal contrast and brightness") : " picture:" + label;
+            flashUntil = now + std::chrono::seconds(2);
+            refreshStatus(now);
+        }
         if (input.consumeScreenshotRequest()) {
             // Save the current frame as escaped text and say so for 3 s.
             std::string path = screenshotPath(romPath);
-            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(*gameboy), colorMode, options_.style);
+            bool ok = AnsiArt::save(path, gameboy->frame(), mapperFor(*gameboy), colorMode, options_.style, contrast_,
+                                    brightness_);
             flash = ok ? " Screen saved to " + path + "  (view it with: cat \"" + path + "\")"
                        : " Could not write " + path;
             flashUntil = now + std::chrono::seconds(3);
@@ -374,7 +413,8 @@ int HeadlessRunner::run() {
             ColorMapper colors(options_.colorCorrection && gameboy->colorScreen() &&
                                gameboy->system() != gb::System::GameBoyAdvance);
             ok = AnsiArt::save(options_.screenshot, gameboy->frame(), colors,
-                               options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256, options_.style);
+                               options_.trueColor ? gfx::ColorMode::TrueColor : gfx::ColorMode::Palette256, options_.style,
+                               options_.contrast, options_.brightness);
         } else {
             ok = util::PngWriter::write(options_.screenshot, gameboy->frame());
         }

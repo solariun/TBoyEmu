@@ -82,6 +82,9 @@ public:
     // front of the status text; empty = none.  When the terminal has no spare
     // status row it is drawn over the picture's last row instead.
     void setIndicator(const std::string& text) { indicator_ = text; }
+    // Picture adjustments (fractions: 0.10 = +10%), see gfx::Options; the
+    // whole picture is redrawn with them on the next frame.
+    void setAdjustments(double contrast, double brightness);
 
 private:
     void drawStatus(std::string& out, const std::string& status);

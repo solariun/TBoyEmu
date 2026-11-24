@@ -53,12 +53,14 @@ public:
     // Returns the text for `frame` (UTF-8, lines ending in "\n").
     // colors converts the RGB555 pixels; colorMode picks palette or 24-bit
     // codes; style: half blocks (default), colored ASCII or plain ASCII.
+    // contrast / brightness: picture adjustments (0.10 = +10%), see gfx::Options.
     static std::string encode(const gb::FrameBuffer& frame, const ColorMapper& colors, gfx::ColorMode colorMode,
-                              gfx::Style style = gfx::Style::Blocks);
+                              gfx::Style style = gfx::Style::Blocks, double contrast = 0, double brightness = 0);
     // encode() + write to `path` (overwritten if it exists).
     // Returns false if the file cannot be opened or written.
     static bool save(const std::string& path, const gb::FrameBuffer& frame, const ColorMapper& colors,
-                     gfx::ColorMode colorMode, gfx::Style style = gfx::Style::Blocks);
+                     gfx::ColorMode colorMode, gfx::Style style = gfx::Style::Blocks, double contrast = 0,
+                     double brightness = 0);
 };
 
 }  // namespace term

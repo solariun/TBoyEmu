@@ -229,3 +229,9 @@ Results:
   cartridges. Sprite timing limits and prefetch timing are approximated.
 - Pixel-FIFO-exact mid-scanline effects (the renderer draws one scanline at
   a time).
+
+## License
+
+TBoyEmu is released under the [MIT License](LICENSE). Graphicx, the
+graphics library in `external/Graphicx`, is MIT too. ROMs aren't part of
+this project: use only games you're allowed to use.
